@@ -100,17 +100,6 @@ export default function App() {
         return 'public_viewer';
       }
 
-      const isAdminParam =
-        params.get('portal') === 'admin' ||
-        params.get('mode') === 'admin' ||
-        window.location.hash.includes('admin');
-      
-      const user = getCurrentUser();
-      // เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถเข้าหน้า dev_console ได้
-      if (isAdminParam && user?.role === 'admin') {
-        return 'dev_console';
-      }
-
       const isUserParam =
         params.get('portal') === 'user' ||
         params.get('portal') === 'app' ||
@@ -123,9 +112,11 @@ export default function App() {
       if (isUserParam) {
         return 'studio';
       }
+
+      // ค่าเริ่มต้นของเซิร์ฟเวอร์คือ ระบบจัดการเว็บไซต์และมอนิเตอร์ (Admin Platform)
+      return 'dev_console';
     }
-    // ค่าเริ่มต้นของระบบคือระบบผู้ใช้งาน (Studio Workspace)
-    return 'studio';
+    return 'dev_console';
   });
 
   // Team Auth State & RBAC
@@ -143,11 +134,6 @@ export default function App() {
           window.location.hash.includes('viewer') ||
           window.location.pathname.startsWith('/view');
 
-        const isAdmin =
-          params.get('portal') === 'admin' ||
-          params.get('mode') === 'admin' ||
-          window.location.hash.includes('admin');
-
         const isUser =
           params.get('portal') === 'user' ||
           params.get('portal') === 'app' ||
@@ -160,10 +146,11 @@ export default function App() {
 
         if (isViewer) {
           setViewMode('public_viewer');
-        } else if (isAdmin && currentTeamUser?.role === 'admin') {
-          setViewMode('dev_console');
-        } else {
+        } else if (isUser) {
           setViewMode('studio');
+        } else {
+          // Default portal is Admin Platform
+          setViewMode('dev_console');
         }
       }
     };
@@ -683,47 +670,6 @@ export default function App() {
   }, [themeConfig.fontFamily]);
 
   if (viewMode === 'dev_console') {
-    // RBAC Security Check: Only admins can access developer console!
-    if (currentTeamUser?.role !== 'admin') {
-      return (
-        <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0d0b18] text-white p-6 select-none">
-          <div className="max-w-md w-full bg-[#17142a] border border-rose-500/40 rounded-2xl p-6 text-center shadow-2xl">
-            <div className="w-12 h-12 rounded-full bg-rose-950/80 border border-rose-500/50 flex items-center justify-center mx-auto mb-4 text-rose-400">
-              <Lock className="w-6 h-6" />
-            </div>
-            <h2 className="text-base font-bold mb-2 text-white">จำกัดสิทธิ์เฉพาะผู้ดูแลระบบ (Admin Only)</h2>
-            <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-              คุณกำลังเข้าสู่ระบบในฐานะทีมผู้ใช้งานทั่วไป ซึ่งไม่ได้รับอนุญาตให้เข้าถึงระบบหลังบ้าน กรุณากลับไปยังพื้นที่ทำงานสร้างแดชบอร์ดของคุณ
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => setViewMode('studio')}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer transition"
-              >
-                กลับสู่พื้นที่ทำงาน (Studio)
-              </button>
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-semibold cursor-pointer transition shadow-md"
-              >
-                เข้าสู่ระบบด้วยบัญชีอื่น
-              </button>
-            </div>
-          </div>
-          {isAuthModalOpen && (
-            <AuthModal
-              isOpen={isAuthModalOpen}
-              onClose={() => setIsAuthModalOpen(false)}
-              onLoginSuccess={(user) => {
-                setCurrentTeamUser(user);
-                setIsAuthModalOpen(false);
-              }}
-            />
-          )}
-        </div>
-      );
-    }
-
     return (
       <AdminPlatform
         onBackToUserPortal={() => {
@@ -749,73 +695,42 @@ export default function App() {
   }
 
   if (viewMode === 'public_viewer') {
-    // Check if website is closed for maintenance and admin has not bypassed
-    if (!siteStatus.isOnline && !adminBypass) {
+    // Check if website is closed for maintenance
+    if (!siteStatus.isOnline) {
       return (
         <MaintenanceScreen
           status={siteStatus}
-          onBypass={() => setAdminBypass(true)}
           onRefresh={() => {
             setSiteStatus(getSiteStatus());
-          }}
-          onAdminPortal={() => {
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.set('portal', 'admin');
-              window.history.pushState({}, '', url.toString());
-            }
-            setViewMode('dev_console');
           }}
         />
       );
     }
 
     return (
-      <>
-        {!siteStatus.isOnline && adminBypass && (
-          <div className="bg-amber-600 text-white text-xs py-1.5 px-4 text-center font-semibold flex items-center justify-center gap-2 sticky top-0 z-50 shadow-md">
-            <span>⚠️ โหมดผู้ดูแลระบบ: คุณกำลังดูตัวอย่างแดชบอร์ดขณะเว็บไซต์ปิดปรับปรุงชั่วคราว</span>
-            <button
-              onClick={() => setAdminBypass(false)}
-              className="underline hover:text-amber-100 cursor-pointer ml-2"
-            >
-              ออกจากโหมดดูตัวอย่าง
-            </button>
-          </div>
-        )}
-        <PublicViewerPortal
-          dashboardTitle={dashboardTitle}
-          widgets={widgets.filter((w) => !w.hidden)}
-          salesData={filteredSalesData}
-          allSalesData={salesData}
-          filterState={filterState}
-          onUpdateFilterState={handleUpdateFilterState}
-          onClearFilters={handleClearAllFilters}
-          onCrossFilter={handleCrossFilter}
-          themeStyles={themeStyles}
-          connectionConfig={connectionConfig}
-          onRefreshData={handleSyncData}
-          isSyncing={isSyncing}
-          onSwitchToAdmin={() => {
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.set('portal', 'admin');
-              window.history.pushState({}, '', url.toString());
-            }
-            setViewMode('dev_console');
-          }}
-        />
-      </>
+      <PublicViewerPortal
+        dashboardTitle={dashboardTitle}
+        widgets={widgets.filter((w) => !w.hidden)}
+        salesData={filteredSalesData}
+        allSalesData={salesData}
+        filterState={filterState}
+        onUpdateFilterState={handleUpdateFilterState}
+        onClearFilters={handleClearAllFilters}
+        onCrossFilter={handleCrossFilter}
+        themeStyles={themeStyles}
+        connectionConfig={connectionConfig}
+        onRefreshData={handleSyncData}
+        isSyncing={isSyncing}
+      />
     );
   }
 
   // Studio Portal (User Portal)
-  // If the user site is offline for maintenance and user is not admin & has not bypassed:
-  if (!siteStatus.isOnline && currentTeamUser?.role !== 'admin' && !adminBypass) {
+  // 1. If website is turned off by Admin: Completely blocked!
+  if (!siteStatus.isOnline) {
     return (
       <MaintenanceScreen
         status={siteStatus}
-        onBypass={() => setAdminBypass(true)}
         onRefresh={() => {
           setSiteStatus(getSiteStatus());
         }}
@@ -889,9 +804,7 @@ export default function App() {
         onOpenTheme={() => setIsThemeModalOpen(true)}
         onOpenGettingStarted={() => setIsGettingStartedOpen(true)}
         onOpenDataEditor={() => setIsDataEditorOpen(true)}
-        onOpenDevConsole={
-          currentTeamUser?.role === 'admin' ? () => setViewMode('dev_console') : undefined
-        }
+        onOpenDevConsole={undefined}
         onOpenPublish={() => setIsPublishModalOpen(true)}
         onOpenNotifications={() => setIsNotificationsModalOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
@@ -958,9 +871,7 @@ export default function App() {
           onOpenTheme={() => setIsThemeModalOpen(true)}
           onAddVisual={handleAddVisual}
           onAddFloatingText={handleAddFloatingText}
-          onOpenDevConsole={
-            currentTeamUser?.role === 'admin' ? () => setViewMode('dev_console') : undefined
-          }
+          onOpenDevConsole={undefined}
           onOpenPublish={() => setIsPublishModalOpen(true)}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
           onOpenProfile={() => setIsProfileModalOpen(true)}
@@ -1149,8 +1060,14 @@ export default function App() {
 
       {/* Team Authentication Modal (Login / Register / Account Switch) */}
       <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        isOpen={isAuthModalOpen || !currentTeamUser}
+        forceAuth={!currentTeamUser}
+        initialMode="register"
+        onClose={() => {
+          if (currentTeamUser) {
+            setIsAuthModalOpen(false);
+          }
+        }}
         onLoginSuccess={(teamUser) => {
           setCurrentTeamUser(teamUser);
           setIsAuthModalOpen(false);

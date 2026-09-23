@@ -91,29 +91,10 @@ export const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({
         <div className="flex flex-wrap items-center justify-center gap-3 w-full">
           <button
             onClick={onRefresh}
-            className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-violet-900/30 cursor-pointer"
+            className="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-violet-900/30 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>ลองรีเฟรชหน้าเว็บอีกครั้ง</span>
-          </button>
-
-          {onAdminPortal && (
-            <button
-              onClick={onAdminPortal}
-              className="px-4 py-2.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/40 text-rose-200 text-xs font-semibold transition flex items-center gap-2 cursor-pointer shadow"
-            >
-              <Key className="w-3.5 h-3.5 text-rose-400" />
-              <span>เข้าสู่ระบบแอดมิน (Admin Platform)</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowPinModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-violet-500/30 text-violet-200 text-xs font-medium transition flex items-center gap-2 cursor-pointer"
-            title="เฉพาะเจ้าหน้าที่ผู้ดูแลระบบที่ถือรหัสผ่าน PIN เท่านั้น"
-          >
-            <Key className="w-3.5 h-3.5 text-violet-400" />
-            <span>ปลดล็อกสำหรับเจ้าหน้าที่ (Admin PIN)</span>
           </button>
         </div>
       </div>
@@ -122,65 +103,6 @@ export const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({
       <div className="mt-8 text-xs text-slate-500 text-center relative z-10">
         <p>Studio BI Analytics Platform • ระบบพอร์ทัลความปลอดภัยสูง</p>
       </div>
-
-      {/* Admin Bypass Modal */}
-      {showPinModal && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setShowPinModal(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-[#1a1435] border border-violet-500/40 rounded-2xl p-6 shadow-2xl text-left"
-          >
-            <div className="flex items-center gap-2.5 mb-3 text-violet-300">
-              <Lock className="w-5 h-5 text-violet-400" />
-              <h3 className="font-bold text-sm text-white">ตรวจสอบสิทธิ์ผู้ดูแลระบบ</h3>
-            </div>
-            <p className="text-xs text-slate-300 mb-4">
-              กรุณากรอกรหัส PIN ผู้ดูแลระบบเพื่อดูตัวอย่างแดชบอร์ดขณะปิดปรับปรุง (รหัสทดสอบ: <code className="text-violet-300 font-mono">1234</code> หรือ <code className="text-violet-300 font-mono">admin</code>)
-            </p>
-
-            <form onSubmit={handleVerifyPin} className="space-y-4">
-              <div>
-                <input
-                  type="password"
-                  autoFocus
-                  value={pin}
-                  onChange={(e) => {
-                    setPin(e.target.value);
-                    setPinError(false);
-                  }}
-                  placeholder="กรอกรหัส PIN..."
-                  className="w-full px-3 py-2 bg-[#120d26] border border-violet-500/40 rounded-xl text-white text-xs outline-none focus:border-violet-400"
-                />
-                {pinError && (
-                  <p className="text-[11px] text-rose-400 mt-1">
-                    รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowPinModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>ยืนยันเข้าชม</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

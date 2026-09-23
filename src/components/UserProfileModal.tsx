@@ -162,41 +162,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     ? 'สิทธิ์แอดมิน: สามารถเข้าถึงระบบหลังบ้าน (Admin Platform) เปิด-ปิดเว็บ จัดการผู้ใช้ และระบบผู้ใช้งาน (Studio) ได้เต็มรูปแบบ'
                     : 'สิทธิ์ผู้ใช้งาน: สามารถสร้าง ออกแบบแดชบอร์ด ซิงค์ Google Sheets และจัดการชิ้นงานของตนเอง โดยไม่มีสิทธิ์เข้าถึงระบบแอดมินหลังบ้าน'}
                 </p>
-
-                {/* Quick test role switcher */}
-                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
-                  <span className="text-slate-400 text-[11px]">สลับบัญชีเพื่อทดสอบสิทธิ์:</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        switchSessionRole('editor');
-                        onClose();
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer transition ${
-                        currentUser?.role !== 'admin'
-                          ? 'bg-violet-600 text-white font-bold shadow'
-                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
-                      }`}
-                    >
-                      👥 ผู้ใช้ทั่วไป (Member)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        switchSessionRole('admin');
-                        onClose();
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer transition ${
-                        currentUser?.role === 'admin'
-                          ? 'bg-emerald-600 text-white font-bold shadow'
-                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
-                      }`}
-                    >
-                      👑 แอดมิน (Admin)
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-1.5">

@@ -27,6 +27,7 @@ interface AuthModalProps {
   onLoginSuccess?: (user: TeamUser) => void;
   initialMode?: 'login' | 'register';
   onGoogleSignIn?: () => Promise<void>;
+  forceAuth?: boolean;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -36,6 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   initialMode = 'login',
   onGoogleSignIn,
+  forceAuth = false,
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
 
@@ -100,26 +102,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 600);
   };
 
-  const handleQuickDemoLogin = (userEmail: string, userPass: string = 'password123') => {
-    setEmail(userEmail);
-    setPassword(userPass);
-    setErrorMsg(null);
-    const res = loginTeamUser(userEmail, userPass);
-    if (res.success && res.user) {
-      setSuccessMsg(`เข้าสู่ระบบเป็น ${res.user.displayName} เรียบร้อย!`);
-      setTimeout(() => {
-        notifySuccess(res.user!);
-        onClose();
-      }, 300);
-    } else {
-      setErrorMsg(res.error || 'ไม่สามารถเข้าสู่ระบบได้');
-    }
-  };
-
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
-      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+      onClick={forceAuth ? undefined : onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -137,7 +123,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">
-                {mode === 'login' ? 'เข้าสู่ระบบทีมงาน (Team Login)' : 'สมัครใช้งานสมาชิกใหม่ (Register)'}
+                {mode === 'login' ? 'เข้าสู่ระบบสมาชิก (Member Login)' : 'สมัครใช้งานสมาชิกใหม่ (Register)'}
               </h2>
               <p className="text-[11px] text-slate-400">
                 {mode === 'login'
@@ -146,12 +132,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!forceAuth && (
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Tab Switcher */}
@@ -316,45 +304,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
         )}
-
-        {/* Quick Demo Login Preset Buttons for easy testing */}
-        <div className="mt-5 pt-4 border-t border-white/10 relative z-10">
-          <div className="text-[11px] font-semibold text-slate-400 mb-2 flex items-center justify-between">
-            <span>⚡ บัญชีทดสอบด่วน (Quick Test Accounts):</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('aoneza953@gmail.com')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#221b42] hover:bg-purple-900/60 border border-purple-500/40 text-purple-200 text-[11px] font-medium transition cursor-pointer flex items-center justify-between"
-              title="สิทธิ์แอดมิน: เข้าถึงได้ทุกอย่างรวมถึงระบบหลังบ้านและจัดการผู้ใช้"
-            >
-              <span>👑 แอดมิน (Admin)</span>
-              <span className="text-[9px] bg-purple-500/30 px-1 rounded font-mono">Full</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('komsan.m@team.internal')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#221b42] hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-200 text-[11px] font-medium transition cursor-pointer flex items-center justify-between"
-              title="สิทธิ์ผู้ใช้ในทีม: สร้าง/แก้แดชบอร์ดได้ทุกอย่าง ไม่มีระบบหลังบ้าน"
-            >
-              <span>👥 สมาชิก (Member)</span>
-              <span className="text-[9px] bg-emerald-500/30 px-1 rounded font-mono">Editor</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('somchai.blocked@team.internal')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#221b42] hover:bg-rose-900/60 border border-rose-500/40 text-rose-200 text-[11px] font-medium transition cursor-pointer flex items-center justify-between"
-              title="ทดสอบบัญชีที่ถูกแอดมินบล็อกไว้"
-            >
-              <span>🚫 บัญชีถูกบล็อก</span>
-              <span className="text-[9px] bg-rose-500/30 px-1 rounded font-mono">Blocked</span>
-            </button>
-          </div>
-        </div>
 
         {/* Google Sign-in Option */}
         {onGoogleSignIn && (

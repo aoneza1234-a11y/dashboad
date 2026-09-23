@@ -521,12 +521,21 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
                     {/* Direct Go to User Website */}
                     <button
-                      onClick={onBackToUserPortal}
+                      onClick={() => window.open(userPortalUrl, '_blank')}
                       className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-lg shadow-violet-900/40"
-                      title="เข้าสู่หน้าสร้างแดชบอร์ดของผู้ใช้งาน (Studio)"
+                      title="เปิดหน้าเว็บสำหรับผู้ใช้งานในแท็บใหม่ (ผู้ใช้จะเริ่มต้นด้วยการสมัครสมาชิก/เข้าสู่ระบบ)"
                     >
-                      <Eye className="w-4 h-4 text-violet-200" />
-                      <span>เข้าไปยังเว็บไซต์สำหรับผู้ใช้</span>
+                      <ExternalLink className="w-4 h-4 text-violet-200" />
+                      <span>เปิดเว็บผู้ใช้ (แท็บใหม่)</span>
+                    </button>
+
+                    <button
+                      onClick={onBackToUserPortal}
+                      className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="สลับไปยังหน้าเว็บสตูดิโอผู้ใช้งานในแท็บนี้"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>สลับไปหน้าผู้ใช้</span>
                     </button>
 
                     {/* Viewer Portal */}

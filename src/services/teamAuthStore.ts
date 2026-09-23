@@ -92,27 +92,33 @@ export function saveTeamUsers(users: TeamUser[]): void {
 }
 
 export function getCurrentSessionUser(): TeamUser | null {
-  if (typeof window === 'undefined') return INITIAL_TEAM_USERS[1];
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) {
-      // Default to standard team user (Editor) for normal user workspace
-      const defaultUser = INITIAL_TEAM_USERS[1];
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(defaultUser));
-      return defaultUser;
+      return null;
     }
     const user: TeamUser = JSON.parse(raw);
     // Double check if user is still in store and not blocked
     const allUsers = getTeamUsers();
     const freshUser = allUsers.find((u) => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
     if (freshUser) {
+      if (freshUser.status === 'blocked') {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        return null;
+      }
       return freshUser;
     }
     return user;
   } catch (err) {
     console.error('Failed to get current session user', err);
-    return INITIAL_TEAM_USERS[1];
+    return null;
   }
+}
+
+export function getAdminUser(): TeamUser {
+  const allUsers = getTeamUsers();
+  return allUsers.find((u) => u.role === 'admin') || INITIAL_TEAM_USERS[0];
 }
 
 export function setCurrentSessionUser(user: TeamUser | null): void {
@@ -160,7 +166,7 @@ export function registerTeamUser(
     id: `usr-${Date.now()}`,
     displayName: displayName.trim() || 'สมาชิกใหม่',
     email: normalizedEmail,
-    role: isFirstUser ? 'admin' : 'editor', // New sign-ups are team editors
+    role: 'editor', // New registered members are always editors (Member)
     status: 'active',
     department: department.trim() || 'ทีมพัฒนาและวิเคราะห์',
     createdAt: new Date().toISOString().split('T')[0],
