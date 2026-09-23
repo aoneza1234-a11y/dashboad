@@ -100,6 +100,17 @@ export default function App() {
         return 'public_viewer';
       }
 
+      const isAdminParam =
+        params.get('portal') === 'admin' ||
+        params.get('mode') === 'admin' ||
+        window.location.hash.includes('admin');
+      
+      const user = getCurrentUser();
+      // เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถเข้าหน้า dev_console ได้
+      if (isAdminParam && user?.role === 'admin') {
+        return 'dev_console';
+      }
+
       const isUserParam =
         params.get('portal') === 'user' ||
         params.get('portal') === 'app' ||
@@ -112,18 +123,13 @@ export default function App() {
       if (isUserParam) {
         return 'studio';
       }
-
-      const isAdminParam =
-        params.get('portal') === 'admin' ||
-        params.get('mode') === 'admin' ||
-        window.location.hash.includes('admin');
-      if (isAdminParam) {
-        return 'dev_console';
-      }
     }
-    // เริ่มต้นระบบจะเป็นตัวระบบแอดมิน (Admin Platform) เป็นค่าเริ่มต้นตามความต้องการของผู้ใช้
-    return 'dev_console';
+    // ค่าเริ่มต้นของระบบคือระบบผู้ใช้งาน (Studio Workspace)
+    return 'studio';
   });
+
+  // Team Auth State & RBAC
+  const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
   // Sync URL changes with viewMode
   useEffect(() => {
@@ -137,6 +143,11 @@ export default function App() {
           window.location.hash.includes('viewer') ||
           window.location.pathname.startsWith('/view');
 
+        const isAdmin =
+          params.get('portal') === 'admin' ||
+          params.get('mode') === 'admin' ||
+          window.location.hash.includes('admin');
+
         const isUser =
           params.get('portal') === 'user' ||
           params.get('portal') === 'app' ||
@@ -149,16 +160,25 @@ export default function App() {
 
         if (isViewer) {
           setViewMode('public_viewer');
-        } else if (isUser) {
-          setViewMode('studio');
-        } else {
+        } else if (isAdmin && currentTeamUser?.role === 'admin') {
           setViewMode('dev_console');
+        } else {
+          setViewMode('studio');
         }
       }
     };
+
+    const handleSessionUpdate = () => {
+      setCurrentTeamUser(getCurrentUser());
+    };
+
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    window.addEventListener('team_session_changed', handleSessionUpdate);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('team_session_changed', handleSessionUpdate);
+    };
+  }, [currentTeamUser]);
 
   // Filter State & Studio Canvas (รองรับ Cross-filtering, ไม่นับช่องว่าง, และเงื่อนไขย่อย)
   const [siteStatus, setSiteStatus] = useState<SiteStatus>(getSiteStatus());
@@ -197,9 +217,6 @@ export default function App() {
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
-
-  // Team Auth State & RBAC
-  const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
   const handleTeamLogout = () => {
     logoutTeamUser();
@@ -802,14 +819,6 @@ export default function App() {
         onRefresh={() => {
           setSiteStatus(getSiteStatus());
         }}
-        onAdminPortal={() => {
-          if (typeof window !== 'undefined') {
-            const url = new URL(window.location.href);
-            url.searchParams.set('portal', 'admin');
-            window.history.pushState({}, '', url.toString());
-          }
-          setViewMode('dev_console');
-        }}
       />
     );
   }
@@ -822,8 +831,8 @@ export default function App() {
         backgroundColor: themeStyles.canvasBg,
       }}
     >
-      {/* If site is offline, display admin alert banner at the top of studio */}
-      {!siteStatus.isOnline && (
+      {/* If site is offline, display admin alert banner ONLY for logged-in admins */}
+      {!siteStatus.isOnline && currentTeamUser?.role === 'admin' && (
         <div className="bg-gradient-to-r from-rose-900 via-amber-900 to-rose-900 text-white text-xs py-2 px-4 text-center font-bold flex flex-wrap items-center justify-between gap-2 shadow-lg shrink-0 z-50 border-b border-rose-500/40">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />

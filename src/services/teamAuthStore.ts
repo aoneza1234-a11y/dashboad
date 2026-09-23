@@ -18,7 +18,7 @@ const INITIAL_TEAM_USERS: TeamUser[] = [
   },
   {
     id: 'usr-editor-1',
-    displayName: 'Komsan (ทีมการตลาด)',
+    displayName: 'Komsan (ผู้ใช้งานทั่วไป)',
     email: 'komsan.m@team.internal',
     role: 'editor',
     status: 'active',
@@ -92,14 +92,14 @@ export function saveTeamUsers(users: TeamUser[]): void {
 }
 
 export function getCurrentSessionUser(): TeamUser | null {
-  if (typeof window === 'undefined') return INITIAL_TEAM_USERS[0];
+  if (typeof window === 'undefined') return INITIAL_TEAM_USERS[1];
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) {
-      // Default to admin user for initial development studio
-      const admin = INITIAL_TEAM_USERS[0];
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(admin));
-      return admin;
+      // Default to standard team user (Editor) for normal user workspace
+      const defaultUser = INITIAL_TEAM_USERS[1];
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(defaultUser));
+      return defaultUser;
     }
     const user: TeamUser = JSON.parse(raw);
     // Double check if user is still in store and not blocked
@@ -111,7 +111,7 @@ export function getCurrentSessionUser(): TeamUser | null {
     return user;
   } catch (err) {
     console.error('Failed to get current session user', err);
-    return INITIAL_TEAM_USERS[0];
+    return INITIAL_TEAM_USERS[1];
   }
 }
 
@@ -123,9 +123,17 @@ export function setCurrentSessionUser(user: TeamUser | null): void {
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
     }
+    window.dispatchEvent(new CustomEvent('team_session_changed', { detail: user }));
   } catch (err) {
     console.error('Failed to set current session user', err);
   }
+}
+
+export function switchSessionRole(role: 'admin' | 'editor'): TeamUser {
+  const allUsers = getTeamUsers();
+  const targetUser = allUsers.find((u) => u.role === role) || (role === 'admin' ? INITIAL_TEAM_USERS[0] : INITIAL_TEAM_USERS[1]);
+  setCurrentSessionUser(targetUser);
+  return targetUser;
 }
 
 export const getCurrentUser = getCurrentSessionUser;

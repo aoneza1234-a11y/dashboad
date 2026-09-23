@@ -110,9 +110,10 @@ export const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({
           <button
             onClick={() => setShowPinModal(true)}
             className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-violet-500/30 text-violet-200 text-xs font-medium transition flex items-center gap-2 cursor-pointer"
+            title="เฉพาะเจ้าหน้าที่ผู้ดูแลระบบที่ถือรหัสผ่าน PIN เท่านั้น"
           >
             <Key className="w-3.5 h-3.5 text-violet-400" />
-            <span>ปลดล็อกด้วย PIN แอดมิน</span>
+            <span>ปลดล็อกสำหรับเจ้าหน้าที่ (Admin PIN)</span>
           </button>
         </div>
       </div>

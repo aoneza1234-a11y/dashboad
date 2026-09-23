@@ -14,6 +14,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { TeamUser } from '../types';
+import { switchSessionRole } from '../services/teamAuthStore';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -80,7 +81,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               {displayName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">{displayName}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-white">{displayName}</h3>
+                {currentUser?.role === 'admin' ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    👑 Admin
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                    👥 Member
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400">{email}</p>
             </div>
           </div>
@@ -133,6 +145,60 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         <div className="p-6">
           {activeTab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
+              {/* Role description card */}
+              <div className="p-3.5 rounded-2xl bg-[#201a40] border border-violet-500/30 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 font-medium">ระดับสิทธิ์ในระบบ:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded-full text-[11px] ${
+                    currentUser?.role === 'admin'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                  }`}>
+                    {currentUser?.role === 'admin' ? '👑 ผู้ดูแลระบบ (Admin)' : '👥 ผู้ใช้งานทั่วไป (Member / Editor)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {currentUser?.role === 'admin'
+                    ? 'สิทธิ์แอดมิน: สามารถเข้าถึงระบบหลังบ้าน (Admin Platform) เปิด-ปิดเว็บ จัดการผู้ใช้ และระบบผู้ใช้งาน (Studio) ได้เต็มรูปแบบ'
+                    : 'สิทธิ์ผู้ใช้งาน: สามารถสร้าง ออกแบบแดชบอร์ด ซิงค์ Google Sheets และจัดการชิ้นงานของตนเอง โดยไม่มีสิทธิ์เข้าถึงระบบแอดมินหลังบ้าน'}
+                </p>
+
+                {/* Quick test role switcher */}
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
+                  <span className="text-slate-400 text-[11px]">สลับบัญชีเพื่อทดสอบสิทธิ์:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchSessionRole('editor');
+                        onClose();
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer transition ${
+                        currentUser?.role !== 'admin'
+                          ? 'bg-violet-600 text-white font-bold shadow'
+                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      👥 ผู้ใช้ทั่วไป (Member)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchSessionRole('admin');
+                        onClose();
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium cursor-pointer transition ${
+                        currentUser?.role === 'admin'
+                          ? 'bg-emerald-600 text-white font-bold shadow'
+                          : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                      }`}
+                    >
+                      👑 แอดมิน (Admin)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs text-slate-300 font-medium block">ชื่อที่ใช้แสดง:</label>
                 <input

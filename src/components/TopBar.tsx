@@ -334,16 +334,16 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span>{isPreviewMode ? 'ออกจากการพรีวิว' : 'พรีวิว'}</span>
           </button>
 
-          {/* Admin Platform shortcut for admins */}
+          {/* Admin Platform shortcut strictly for admins only */}
           {currentUser?.role === 'admin' && onOpenDevConsole && (
             <button
               id="btn-admin-platform-shortcut"
               onClick={onOpenDevConsole}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-200 font-bold text-xs transition shadow-md cursor-pointer"
-              title="กลับไปยังระบบแอดมินส่วนกลาง (เปิด-ปิดเว็บ, จัดการผู้ใช้, ตั้งค่าระบบ)"
+              title="เฉพาะบัญชีผู้ดูแลระบบ (Admin) เท่านั้น: จัดการเปิด-ปิดเว็บ, จัดการผู้ใช้, ตั้งค่าระบบ"
             >
               <Shield className="w-3.5 h-3.5 text-rose-400" />
-              <span>ระบบแอดมิน</span>
+              <span>👑 ระบบแอดมิน (Admin)</span>
             </button>
           )}
 
@@ -360,7 +360,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     if (onOpenProfile) onOpenProfile();
                     else if (onOpenAuthModal) onOpenAuthModal();
                   }}
-                  title={`บัญชี: ${userName} - คลิกเพื่อจัดการโปรไฟล์และ API Key`}
+                  title={`บัญชี: ${userName} (${currentUser.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งานทั่วไป'}) - คลิกเพื่อดูบทบาทหรือจัดการโปรไฟล์`}
                 >
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs ${
@@ -381,7 +381,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                             : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
                         }`}
                       >
-                        {currentUser.role === 'admin' ? '👑 Admin' : '👥 Editor'}
+                        {currentUser.role === 'admin' ? '👑 Admin' : '👥 Member'}
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 leading-tight">
