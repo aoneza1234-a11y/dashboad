@@ -24,6 +24,8 @@ export interface AdminSecuritySettings {
 }
 
 export interface SiteStatus {
+  platformName: string;
+  platformSubtitle?: string;
   isOnline: boolean;
   maintenanceTitle: string;
   maintenanceMessage: string;
@@ -38,6 +40,8 @@ export interface SiteStatus {
 const STORAGE_KEY = 'bi_studio_site_status_v2';
 
 const DEFAULT_STATUS: SiteStatus = {
+  platformName: 'Studio BI Analytics',
+  platformSubtitle: 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ',
   isOnline: true,
   maintenanceTitle: 'เว็บไซต์ปิดปรับปรุงชั่วคราว',
   maintenanceMessage: 'ขณะนี้ผู้ดูแลระบบกำลังอัปเดตข้อมูลและปรับปรุงแดชบอร์ด ระบบจะเปิดให้บริการตามปกติเร็วๆ นี้ กรุณากลับมาใหม่อีกครั้งในภายหลัง',

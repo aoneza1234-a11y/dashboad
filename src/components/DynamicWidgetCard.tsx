@@ -244,12 +244,19 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
         borderWidth: `${isSelected ? 2 : borderWidth}px`,
         borderStyle: borderStyle,
         borderRadius: borderRadius,
+        color: themeStyles ? themeStyles.cardText : isDark ? '#ffffff' : '#0f172a',
         opacity: cardOpacity,
         height: '100%',
       };
 
   // Aggregation label in Thai
   const getAggLabel = () => {
+    if (widget.showAggregationLabel === false) {
+      return '';
+    }
+    if (widget.subtitle) {
+      return widget.subtitle;
+    }
     switch (widget.aggregation) {
       case 'count_distinct':
         return 'นับค่าไม่ซ้ำ (DISTINCT COUNT)';
@@ -426,21 +433,32 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
 
       return (
         <div className="flex flex-col justify-center h-full min-h-full py-2">
-          <div className="flex items-center justify-between gap-1.5 text-xs font-medium opacity-70">
-            <span>{getAggLabel()}</span>
-            {widget.showRowCount && (
-              <span className="text-[10px] bg-slate-200/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded font-mono">
-                {filteredRecords.length} แถว
-              </span>
-            )}
-          </div>
+          {/* Aggregation label / Subtitle (Toggled by showAggregationLabel) */}
+          {(widget.showAggregationLabel !== false || widget.showRowCount) && (
+            <div className="flex items-center justify-between gap-1.5 text-xs font-medium opacity-70 mb-0.5 min-h-[16px]">
+              {widget.showAggregationLabel !== false ? (
+                <span>{widget.subtitle || getAggLabel()}</span>
+              ) : (
+                <span></span>
+              )}
+              {widget.showRowCount && (
+                <span className="text-[10px] bg-slate-200/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded font-mono">
+                  {filteredRecords.length} แถว
+                </span>
+              )}
+            </div>
+          )}
           <div
             className="text-3xl sm:text-4xl font-black tracking-tight my-1.5 flex items-baseline gap-1.5"
             style={kpiColor ? { color: kpiColor } : undefined}
           >
-            {widget.prefix && <span className="text-violet-500 text-xl font-bold">{widget.prefix}</span>}
+            {widget.showPrefix !== false && widget.prefix && (
+              <span className="text-violet-500 text-xl font-bold">{widget.prefix}</span>
+            )}
             <span>{formatVal(kpiValue)}</span>
-            {widget.suffix && <span className="opacity-60 text-sm font-normal">{widget.suffix}</span>}
+            {widget.showSuffix !== false && widget.suffix && (
+              <span className="opacity-60 text-sm font-normal">{widget.suffix}</span>
+            )}
           </div>
           {/* Trend Indicator & Mini Sparkline Badge without 'vs' */}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -469,7 +487,7 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
                 )}
               </div>
             )}
-            {widget.subtitle && (
+            {widget.subtitle && widget.showAggregationLabel === false && (
               <div className="text-[11px] opacity-60 truncate">{widget.subtitle}</div>
             )}
           </div>
@@ -1032,6 +1050,30 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
                 )}
                 <span>{widget.showTitle === false ? 'ชื่อ: ซ่อน' : 'ชื่อ: เปิด'}</span>
               </button>
+
+              {/* Quick toggle for "ผลรวม" / Aggregation label for KPI */}
+              {widget.type === 'kpi' && (
+                <button
+                  onClick={() =>
+                    onUpdateWidget?.(widget.id, {
+                      showAggregationLabel: widget.showAggregationLabel === false ? true : false,
+                    })
+                  }
+                  title={widget.showAggregationLabel === false ? 'เปิดแสดงคำว่า "ผลรวม"' : 'ซ่อนคำว่า "ผลรวม"'}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer ${
+                    widget.showAggregationLabel === false
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-[#261f49] hover:bg-[#342b61] text-slate-300'
+                  }`}
+                >
+                  {widget.showAggregationLabel === false ? (
+                    <EyeOff className="w-3 h-3 text-amber-400" />
+                  ) : (
+                    <Eye className="w-3 h-3 text-emerald-400" />
+                  )}
+                  <span>{widget.showAggregationLabel === false ? 'ผลรวม: ซ่อน' : 'ผลรวม: เปิด'}</span>
+                </button>
+              )}
             </>
           )}
 

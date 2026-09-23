@@ -21,6 +21,7 @@ import {
   PanelRightOpen,
   Edit2,
   Check,
+  Save,
   RefreshCw,
   FileSpreadsheet,
   Shapes,
@@ -52,6 +53,8 @@ interface TopBarProps {
   isSaved: boolean;
   isSyncing: boolean;
   onSync: () => void;
+  onSaveDashboard?: () => void;
+  lastSavedAt?: string;
   onUndo: () => void;
   onRedo: () => void;
   onOpenHistory: () => void;
@@ -94,6 +97,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSaved,
   isSyncing,
   onSync,
+  onSaveDashboard,
+  lastSavedAt,
   onUndo,
   onRedo,
   onOpenHistory,
@@ -169,7 +174,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header
       style={{ backgroundColor: topBarBg, borderColor: topBarBorder }}
       className={`border-b select-none transition-colors duration-200 ${
-        isLight ? 'text-slate-800' : 'text-slate-200'
+        isLight ? 'text-slate-900' : 'text-slate-100'
       }`}
     >
       {/* Top Main Row */}
@@ -177,10 +182,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Left: Breadcrumbs & Title */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <div className="text-[11px] text-violet-300/70 flex items-center gap-1.5 font-medium">
-              <span>พื้นที่ทำงาน</span>
+            <div className={`text-[11px] flex items-center gap-1.5 font-medium ${
+              isLight ? 'text-slate-600' : 'text-violet-300/80'
+            }`}>
+              <span className="font-semibold">{siteStatus.platformName || 'Studio BI'}</span>
               <span>/</span>
-              <span className="text-violet-300">แดชบอร์ด BI</span>
+              <span className={isLight ? 'text-violet-700 font-bold' : 'text-violet-300 font-semibold'}>พื้นที่ทำงาน</span>
             </div>
 
             <div className="flex items-center gap-2 mt-0.5">
@@ -191,7 +198,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                     value={tempTitle}
                     onChange={(e) => setTempTitle(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
-                    className="bg-[#241e45] text-white text-base font-bold px-2 py-0.5 rounded border border-violet-400 outline-none"
+                    className={`text-base font-bold px-2 py-0.5 rounded border outline-none ${
+                      isLight
+                        ? 'bg-white text-slate-900 border-violet-500 shadow-xs'
+                        : 'bg-[#241e45] text-white border-violet-400'
+                    }`}
                     autoFocus
                   />
                   <button
@@ -203,7 +214,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-base font-bold text-white tracking-tight">
+                  <h1 className={`text-base font-bold tracking-tight ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
                     {dashboardTitle}
                   </h1>
                   <button
@@ -211,7 +224,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setTempTitle(dashboardTitle);
                       setIsEditingTitle(true);
                     }}
-                    className="text-slate-400 hover:text-white transition cursor-pointer"
+                    className={`transition cursor-pointer p-0.5 rounded hover:bg-black/5 ${
+                      isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+                    }`}
                     title="แก้ไขชื่อแดชบอร์ด"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -219,23 +234,60 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </div>
               )}
 
-              {/* Saved Status Badge */}
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#241e42] border border-[#342b5c] text-[11px] text-violet-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>{isSaved ? 'บันทึกแล้ว' : 'กำลังแก้ไข...'}</span>
+              {/* Saved Status Badge & Auto-Save indicator */}
+              <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] border font-medium ${
+                isLight
+                  ? isSaved
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                    : 'bg-amber-50 border-amber-300 text-amber-800'
+                  : isSaved
+                    ? 'bg-[#183127] border-emerald-500/40 text-emerald-300'
+                    : 'bg-[#241e42] border-[#342b5c] text-violet-300'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSaved ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                <span>
+                  {isSaved
+                    ? `บันทึกแล้ว${lastSavedAt ? ` (${lastSavedAt})` : ''}`
+                    : 'กำลังบันทึกอัตโนมัติ...'}
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right: History, Theme, Sync, Preview Controls */}
+        {/* Right: History, Theme, Sync, Save, Preview Controls */}
         <div className="flex items-center gap-2 text-xs">
+          {/* Manual Save Button - Instant per-user save */}
+          {onSaveDashboard && (
+            <button
+              id="btn-manual-save-dashboard"
+              onClick={onSaveDashboard}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs transition cursor-pointer ${
+                isLight
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/40'
+              }`}
+              title="กดบันทึกแดชบอร์ดลงในบัญชีผู้ใช้ของคุณทันที"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>บันทึก</span>
+            </button>
+          )}
+
           {/* Undo / Redo / History */}
-          <div className="flex items-center bg-[#211b3d] rounded-lg p-0.5 border border-[#2f2757]">
+          <div className={`flex items-center rounded-lg p-0.5 border ${
+            isLight
+              ? 'bg-slate-100 border-slate-300'
+              : 'bg-[#211b3d] border-[#2f2757]'
+          }`}>
             <button
               id="btn-undo"
               onClick={onUndo}
-              className="p-1.5 hover:bg-[#2e2656] text-slate-300 hover:text-white rounded transition cursor-pointer"
+              className={`p-1.5 rounded transition cursor-pointer ${
+                isLight
+                  ? 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  : 'text-slate-300 hover:bg-[#2e2656] hover:text-white'
+              }`}
               title="เลิกทำ (Undo)"
             >
               <Undo2 className="w-3.5 h-3.5" />
@@ -243,7 +295,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               id="btn-redo"
               onClick={onRedo}
-              className="p-1.5 hover:bg-[#2e2656] text-slate-300 hover:text-white rounded transition cursor-pointer"
+              className={`p-1.5 rounded transition cursor-pointer ${
+                isLight
+                  ? 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  : 'text-slate-300 hover:bg-[#2e2656] hover:text-white'
+              }`}
               title="ทำซ้ำ (Redo)"
             >
               <Redo2 className="w-3.5 h-3.5" />
@@ -251,7 +307,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               id="btn-history"
               onClick={onOpenHistory}
-              className="p-1.5 hover:bg-[#2e2656] text-slate-300 hover:text-white rounded transition cursor-pointer"
+              className={`p-1.5 rounded transition cursor-pointer ${
+                isLight
+                  ? 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  : 'text-slate-300 hover:bg-[#2e2656] hover:text-white'
+              }`}
               title="ประวัติเวอร์ชันและสแนปช็อต"
             >
               <History className="w-3.5 h-3.5" />
@@ -262,10 +322,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             id="btn-theme-switcher"
             onClick={onOpenTheme}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#211b3d] hover:bg-[#2e2656] border border-[#2f2757] text-violet-300 hover:text-white transition cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition cursor-pointer ${
+              isLight
+                ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-xs'
+                : 'bg-[#211b3d] hover:bg-[#2e2656] border-[#2f2757] text-violet-200 hover:text-white'
+            }`}
             title="ปรับแต่งธีมของพื้นที่ทำงาน (เลือกสีหลัก ฟอนต์ เงา และพรีเซ็ต)"
           >
-            <Palette className="w-3.5 h-3.5 text-pink-400" />
+            <Palette className="w-3.5 h-3.5 text-pink-500" />
             <span className="font-semibold text-[11px]">ธีม</span>
           </button>
 
@@ -274,11 +338,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             id="btn-sync"
             onClick={onSync}
             disabled={isSyncing}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#261f4a] hover:bg-[#312860] border border-violet-500/40 text-violet-200 text-xs font-medium transition cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+              isLight
+                ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-xs'
+                : 'bg-[#261f4a] hover:bg-[#312860] border-violet-500/40 text-violet-200'
+            }`}
             title="กดเพื่อดึงข้อมูลแถวล่าสุดจาก Google Sheets"
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-400' : 'text-emerald-400'}`}
+              className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-500' : 'text-emerald-500'}`}
             />
             <span>{isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ข้อมูล'}</span>
           </button>
@@ -287,10 +355,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             id="btn-topbar-sheet-config"
             onClick={onOpenConnectSheet}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-xs font-semibold transition cursor-pointer"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+              isLight
+                ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'
+                : 'bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300'
+            }`}
             title="ตั้งค่า Google Sheets และช่วงแถวข้อมูล"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>เชื่อมชีต</span>
           </button>
 
@@ -301,10 +373,14 @@ export const TopBar: React.FC<TopBarProps> = ({
               if (onOpenPublish) onOpenPublish();
               else setShowShareModal(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/50 text-indigo-200 font-semibold text-xs transition shadow-sm cursor-pointer"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs transition shadow-xs cursor-pointer ${
+              isLight
+                ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-900'
+                : 'bg-indigo-950/80 hover:bg-indigo-900 border-indigo-500/50 text-indigo-200'
+            }`}
             title="เผยแพร่แดชบอร์ดและสร้างลิงก์สำหรับผู้ชม"
           >
-            <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+            <Share2 className="w-3.5 h-3.5 text-indigo-500" />
             <span>แชร์ลิงก์ผู้ชม</span>
           </button>
 
@@ -313,10 +389,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               id="btn-notifications-top"
               onClick={onOpenNotifications}
-              className="p-1.5 rounded-lg border border-white/10 hover:bg-white/10 text-slate-300 transition cursor-pointer"
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                isLight
+                  ? 'border-slate-300 hover:bg-slate-100 text-slate-700'
+                  : 'border-white/10 hover:bg-white/10 text-slate-300'
+              }`}
               title="การแจ้งเตือน (Email, Line Notify, Push)"
             >
-              <Bell className="w-3.5 h-3.5 text-amber-400" />
+              <Bell className="w-3.5 h-3.5 text-amber-500" />
             </button>
           )}
 
@@ -324,7 +404,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             id="btn-preview-mode"
             onClick={onTogglePreview}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition shadow-sm cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition shadow-sm cursor-pointer ${
               isPreviewMode
                 ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
                 : 'bg-[#6d28d9] hover:bg-[#7c3aed] text-white shadow-violet-900/40'
@@ -372,19 +452,21 @@ export const TopBar: React.FC<TopBarProps> = ({
                     {userInitial}
                   </div>
                   <div className="text-left hidden md:block">
-                    <div className="text-xs font-semibold text-white leading-tight flex items-center gap-1">
+                    <div className={`text-xs leading-tight flex items-center gap-1 ${
+                      isLight ? 'text-slate-900 font-bold' : 'text-white font-semibold'
+                    }`}>
                       <span>{userName}</span>
                       <span
                         className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-medium ${
                           currentUser.role === 'admin'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                            ? isLight ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : isLight ? 'bg-violet-100 text-violet-800 border border-violet-300' : 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
                         }`}
                       >
                         {currentUser.role === 'admin' ? '👑 Admin' : '👥 Member'}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className={`text-[10px] leading-tight ${isLight ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
                       {currentUser.department || 'ทีมปฏิบัติการ'}
                     </div>
                   </div>
@@ -540,9 +622,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               onChange={(e) => setLayoutMode(e.target.value)}
               className="bg-transparent font-medium outline-none cursor-pointer"
             >
-              <option value="กริด 12 คอลัมน์" className="bg-[#201a3b] text-white">กริด 12 คอลัมน์</option>
-              <option value="ผืนงานอิสระ" className="bg-[#201a3b] text-white">ผืนงานอิสระ</option>
-              <option value="คอลัมน์คู่" className="bg-[#201a3b] text-white">คอลัมน์คู่</option>
+              <option value="กริด 12 คอลัมน์" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>กริด 12 คอลัมน์</option>
+              <option value="ผืนงานอิสระ" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>ผืนงานอิสระ</option>
+              <option value="คอลัมน์คู่" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>คอลัมน์คู่</option>
             </select>
           </div>
 
@@ -563,10 +645,10 @@ export const TopBar: React.FC<TopBarProps> = ({
               }}
               className="bg-transparent font-medium outline-none cursor-pointer"
             >
-              <option value="เลือกเทมเพลต" className="bg-[#201a3b] text-white">เลือกเทมเพลต</option>
-              <option value="สรุปภาพรวม KPI" className="bg-[#201a3b] text-white">สรุปภาพรวม KPI</option>
-              <option value="เปรียบเทียบหมวดหมู่" className="bg-[#201a3b] text-white">เปรียบเทียบหมวดหมู่</option>
-              <option value="เจาะลึกภูมิภาค" className="bg-[#201a3b] text-white">เจาะลึกภูมิภาค</option>
+              <option value="เลือกเทมเพลต" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>เลือกเทมเพลต</option>
+              <option value="สรุปภาพรวม KPI" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>สรุปภาพรวม KPI</option>
+              <option value="เปรียบเทียบหมวดหมู่" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>เปรียบเทียบหมวดหมู่</option>
+              <option value="เจาะลึกภูมิภาค" className={isLight ? 'bg-white text-slate-900' : 'bg-[#201a3b] text-white'}>เจาะลึกภูมิภาค</option>
             </select>
           </div>
 

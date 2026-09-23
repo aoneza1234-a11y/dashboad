@@ -136,6 +136,67 @@ const PALETTES = [
   ['#0f172a', '#334155', '#475569', '#64748b', '#94a3b8'],
 ];
 
+// Color Picker Field component for clean, high-contrast, modern UI
+const ColorPickerField: React.FC<{
+  label?: string;
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}> = ({ label, value, onChange, placeholder = '#ffffff' }) => {
+  const [internalHex, setInternalHex] = useState(value || placeholder);
+
+  React.useEffect(() => {
+    setInternalHex(value || placeholder);
+  }, [value, placeholder]);
+
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-[11px] font-semibold text-slate-700">{label}</label>
+      )}
+      <div className="flex items-center gap-2">
+        <label
+          className="relative w-8 h-8 rounded-lg border border-slate-300 shadow-2xs overflow-hidden shrink-0 cursor-pointer hover:ring-2 hover:ring-violet-400 transition block"
+          style={{ backgroundColor: value || placeholder }}
+          title="แตะเพื่อเลือกสี"
+        >
+          <input
+            type="color"
+            value={value || placeholder}
+            onChange={(e) => {
+              setInternalHex(e.target.value);
+              onChange(e.target.value);
+            }}
+            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+          />
+        </label>
+        <div className="flex-1">
+          <input
+            type="text"
+            value={internalHex}
+            onChange={(e) => {
+              const v = e.target.value;
+              setInternalHex(v);
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(v)) {
+                onChange(v);
+              }
+            }}
+            onBlur={() => {
+              if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(internalHex)) {
+                onChange(internalHex);
+              } else {
+                setInternalHex(value || placeholder);
+              }
+            }}
+            placeholder={placeholder}
+            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono font-semibold uppercase text-slate-800 bg-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400 transition"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Inspector: React.FC<InspectorProps> = ({
   widget,
   onClose,
@@ -177,7 +238,7 @@ export const Inspector: React.FC<InspectorProps> = ({
     return (
       <aside
         id="bi-inspector-empty"
-        className="w-80 bg-white border-l border-slate-200 flex flex-col h-screen select-none shrink-0 p-6 text-center text-slate-500 justify-center"
+        className="w-88 sm:w-[350px] bg-white border-l border-slate-200 flex flex-col h-screen select-none shrink-0 p-6 text-center text-slate-500 justify-center"
       >
         <CircleDot className="w-10 h-10 text-slate-300 mx-auto mb-2" />
         <div className="font-semibold text-slate-700 text-sm">ยังไม่ได้เลือกวิชวล</div>
@@ -208,25 +269,31 @@ export const Inspector: React.FC<InspectorProps> = ({
     setTimeout(() => setSavedAlert(false), 2000);
   };
 
-  // Toggle switch helper
+  // Enhanced Toggle switch helper
   const renderToggle = (
     label: string,
     checked: boolean,
     onChange: (val: boolean) => void,
-    id: string
+    id: string,
+    sublabel?: string
   ) => (
-    <div className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-      <span className="text-xs text-slate-700">{label}</span>
+    <div className="flex items-center justify-between py-2 border-b border-slate-100/80 last:border-0 gap-3">
+      <div className="flex flex-col pr-1 min-w-0">
+        <span className="text-xs font-semibold text-slate-800 leading-tight">{label}</span>
+        {sublabel && (
+          <span className="text-[10px] text-slate-400 leading-tight mt-0.5">{sublabel}</span>
+        )}
+      </div>
       <button
         type="button"
         id={id}
         onClick={() => onChange(!checked)}
-        className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
-          checked ? 'bg-violet-600' : 'bg-slate-200'
+        className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+          checked ? 'bg-violet-600 ring-2 ring-violet-400/30' : 'bg-slate-200 hover:bg-slate-300'
         }`}
       >
         <span
-          className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.75 transition-transform shadow-xs ${
+          className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.75 transition-transform shadow-sm ${
             checked ? 'left-4.5' : 'left-0.75'
           }`}
         />
@@ -237,7 +304,7 @@ export const Inspector: React.FC<InspectorProps> = ({
   return (
     <aside
       id="bi-inspector"
-      className="w-80 bg-white border-l border-slate-200 flex flex-col h-screen select-none shrink-0 shadow-sm"
+      className="w-88 sm:w-[350px] bg-white border-l border-slate-200 flex flex-col h-screen select-none shrink-0 shadow-sm"
     >
       {/* Top Header */}
       <div className="p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
@@ -397,6 +464,59 @@ export const Inspector: React.FC<InspectorProps> = ({
                 </select>
               </div>
 
+              {/* KPI / Metric Custom Text & Labels */}
+              {(widget.type === 'kpi' || !widget.type.startsWith('shape_')) && (
+                <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2.5 mt-2">
+                  <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wide flex items-center justify-between">
+                    <span>ข้อความและสัญลักษณ์กำกับ</span>
+                    <span className="text-[10px] text-slate-400 font-normal">ปรับแต่งหรือเว้นว่างได้</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      ข้อความกำกับแทน "ผลรวม" (Subtitle / Custom Label)
+                    </label>
+                    <input
+                      type="text"
+                      value={widget.subtitle ?? ''}
+                      onChange={(e) => onUpdateWidget(widget.id, { subtitle: e.target.value })}
+                      placeholder="เช่น ยอดขายรวมทั้งปี, กำไรสะสม (หรือเว้นว่างใช้คำเดิม)"
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      *สามารถซ่อนคำนี้ทั้งหมดได้ที่แท็บ Style &gt; การเปิด/ปิดองค์ประกอบและข้อมูล
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        สัญลักษณ์นำหน้า (Prefix)
+                      </label>
+                      <input
+                        type="text"
+                        value={widget.prefix ?? ''}
+                        onChange={(e) => onUpdateWidget(widget.id, { prefix: e.target.value })}
+                        placeholder="เช่น # หรือ ฿"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-mono text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        หน่วยต่อท้าย (Suffix)
+                      </label>
+                      <input
+                        type="text"
+                        value={widget.suffix ?? ''}
+                        onChange={(e) => onUpdateWidget(widget.id, { suffix: e.target.value })}
+                        placeholder="เช่น บาท หรือ ชิ้น"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Drill Down Configuration for Charts */}
               {widget.type !== 'shape' && widget.type !== 'kpi' && widget.type !== 'table' && (
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mt-3 space-y-2">
@@ -499,121 +619,173 @@ export const Inspector: React.FC<InspectorProps> = ({
               </div>
             </div>
 
-            {/* Display Toggles matching screenshot 2 */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
-                การแสดงผล
+            {/* Display Elements & Data Toggles (การเปิด/ปิดองค์ประกอบและข้อมูลบนกราฟ) */}
+            <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-violet-600" />
+                  <span>การเปิด/ปิดองค์ประกอบและข้อมูล</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium">เปิด/ปิดอิสระ</span>
               </div>
 
-              <div className="space-y-0.5">
+              <div className="divide-y divide-slate-100 bg-white p-2.5 rounded-lg border border-slate-200/70 shadow-2xs">
                 {renderToggle(
-                  'แสดงชื่อวิชวล',
+                  'แสดงชื่อวิชวล (Title Header)',
                   widget.showTitle !== false,
                   (val) => onUpdateWidget(widget.id, { showTitle: val }),
-                  'toggle-show-title'
+                  'toggle-show-title',
+                  'แถบชื่อด้านบนของการ์ด'
                 )}
+
+                {/* Aggregation label toggle: Explicitly requested by user for "ผลรวม" */}
                 {renderToggle(
-                  'แสดงคำอธิบายสี',
-                  widget.showLegend !== false,
-                  (val) => onUpdateWidget(widget.id, { showLegend: val }),
-                  'toggle-show-legend'
+                  'แสดงคำกำกับ "ผลรวม" / ประเภทการคำนวณ',
+                  widget.showAggregationLabel !== false,
+                  (val) => onUpdateWidget(widget.id, { showAggregationLabel: val }),
+                  'toggle-show-agg-label',
+                  'เปิด/ปิด คำว่า "ผลรวม" หรือคำอธิบายสรุปด้านบนตัวเลข'
                 )}
+
+                {/* Prefix toggle (#, ฿) */}
+                {(widget.type === 'kpi' || widget.prefix) &&
+                  renderToggle(
+                    'แสดงสัญลักษณ์นำหน้า (Prefix เช่น # หรือ ฿)',
+                    widget.showPrefix !== false,
+                    (val) => onUpdateWidget(widget.id, { showPrefix: val }),
+                    'toggle-show-prefix',
+                    'แสดงสัญลักษณ์หน้าตัวเลข (เช่น # หรือ ฿)'
+                  )}
+
+                {/* Suffix toggle */}
+                {(widget.type === 'kpi' || widget.suffix) &&
+                  renderToggle(
+                    'แสดงหน่วยต่อท้าย (Suffix)',
+                    widget.showSuffix !== false,
+                    (val) => onUpdateWidget(widget.id, { showSuffix: val }),
+                    'toggle-show-suffix',
+                    'แสดงหน่วยกำกับหลังตัวเลข (เช่น บาท, ชิ้น)'
+                  )}
+
                 {renderToggle(
-                  'แสดงค่าบนกราฟ',
+                  'แสดงค่าตัวเลขบนกราฟ (Data Labels)',
                   widget.showDataLabels === true,
                   (val) => onUpdateWidget(widget.id, { showDataLabels: val }),
-                  'toggle-show-labels'
+                  'toggle-show-labels',
+                  'แสดงตัวเลขค่าจริงบนแท่ง จุด หรือเส้นกราฟ'
                 )}
+
                 {renderToggle(
-                  'แสดงเส้นตาราง',
-                  widget.showGrid !== false,
-                  (val) => onUpdateWidget(widget.id, { showGrid: val }),
-                  'toggle-show-grid'
+                  'แสดงคำอธิบายแผนภูมิและสี (Legend)',
+                  widget.showLegend !== false,
+                  (val) => onUpdateWidget(widget.id, { showLegend: val }),
+                  'toggle-show-legend',
+                  'แสดงรายการสีและหมวดหมู่'
                 )}
+
                 {renderToggle(
-                  'แสดงแกน X',
+                  'แสดงแกน X (X-Axis)',
                   widget.showXAxis !== false,
                   (val) => onUpdateWidget(widget.id, { showXAxis: val }),
-                  'toggle-show-xaxis'
+                  'toggle-show-xaxis',
+                  'แสดงชื่อหมวดหมู่ในแนวนอน'
                 )}
+
                 {renderToggle(
-                  'แสดงแกน Y',
+                  'แสดงแกน Y (Y-Axis)',
                   widget.showYAxis !== false,
                   (val) => onUpdateWidget(widget.id, { showYAxis: val }),
-                  'toggle-show-yaxis'
+                  'toggle-show-yaxis',
+                  'แสดงสเกลตัวเลขในแนวตั้ง'
                 )}
+
                 {renderToggle(
-                  'แสดง Tooltip',
+                  'แสดงเส้นตาราง (Grid Lines)',
+                  widget.showGrid !== false,
+                  (val) => onUpdateWidget(widget.id, { showGrid: val }),
+                  'toggle-show-grid',
+                  'แสดงเส้นแนวหลังกราฟ'
+                )}
+
+                {renderToggle(
+                  'แสดงกล่องข้อมูลเมื่อชี้เมาส์ (Tooltip)',
                   widget.showTooltip !== false,
                   (val) => onUpdateWidget(widget.id, { showTooltip: val }),
-                  'toggle-show-tooltip'
+                  'toggle-show-tooltip',
+                  'แสดงรายละเอียดเมื่อนำเมาส์ไปชี้'
                 )}
+
                 {renderToggle(
-                  'แสดงจำนวนแถวที่คำนวณ',
+                  'แสดงจำนวนแถวที่คำนวณ (Row Count)',
                   widget.showRowCount === true,
                   (val) => onUpdateWidget(widget.id, { showRowCount: val }),
-                  'toggle-show-rowcount'
+                  'toggle-show-rowcount',
+                  'แสดงป้ายจำนวนแถวข้อมูล'
                 )}
+
                 {renderToggle(
-                  'ไม่นับข้อมูลช่องว่าง',
+                  'ไม่นับข้อมูลที่เป็นช่องว่าง (Skip Blanks)',
                   widget.skipBlanks !== false,
                   (val) => onUpdateWidget(widget.id, { skipBlanks: val }),
-                  'toggle-skip-blanks'
-                )}
-                {widget.type === 'kpi' && (
-                  <div className="space-y-2 pt-1 border-t border-slate-100">
-                    {renderToggle(
-                      'แสดงแนวโน้มเทียบช่วงก่อนหน้า (KPI Trend ▲/▼)',
-                      widget.showTrend !== false,
-                      (val) => onUpdateWidget(widget.id, { showTrend: val }),
-                      'toggle-show-trend'
-                    )}
-
-                    {widget.showTrend !== false && (
-                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-2 text-xs">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            คอลัมน์ช่วงเวลา/มิติเปรียบเทียบ (Compare Column)
-                          </label>
-                          <select
-                            value={widget.trendCompareColumn || ''}
-                            onChange={(e) =>
-                              onUpdateWidget(widget.id, { trendCompareColumn: e.target.value })
-                            }
-                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white font-medium"
-                          >
-                            <option value="">อัตโนมัติ (ครึ่งช่วงข้อมูลล่าสุด)</option>
-                            <option value="date">วันที่ (date / เดือน-ปี)</option>
-                            {availableColumns.map((col) => (
-                              <option key={col} value={col}>
-                                {col}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            ข้อความกำกับแนวโน้ม (Label)
-                          </label>
-                          <input
-                            type="text"
-                            value={widget.trendLabel ?? 'เดือนก่อนหน้า'}
-                            onChange={(e) =>
-                              onUpdateWidget(widget.id, { trendLabel: e.target.value })
-                            }
-                            placeholder="เช่น เดือนก่อนหน้า (เว้นว่างเพื่อแสดงเฉพาะ % และตัวเลข)"
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded text-xs bg-white"
-                          />
-                          <p className="text-[10px] text-slate-500 mt-1">
-                            *ระบบแสดงเฉพาะ ▲/▼ เปอร์เซ็นต์ และผลต่างตัวเลข (+/-) โดยไม่มีคำว่า "vs" บัง
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  'toggle-skip-blanks',
+                  'ข้ามแถวที่ไม่มีข้อมูล'
                 )}
               </div>
+
+              {widget.type === 'kpi' && (
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  {renderToggle(
+                    'แสดงแนวโน้มเทียบช่วงก่อนหน้า (KPI Trend ▲/▼)',
+                    widget.showTrend !== false,
+                    (val) => onUpdateWidget(widget.id, { showTrend: val }),
+                    'toggle-show-trend',
+                    'แสดงเปอร์เซ็นต์และผลต่างเพิ่มขึ้น/ลดลง'
+                  )}
+
+                  {widget.showTrend !== false && (
+                    <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2.5 text-xs shadow-2xs">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          คอลัมน์ช่วงเวลา/มิติเปรียบเทียบ (Compare Column)
+                        </label>
+                        <select
+                          value={widget.trendCompareColumn || ''}
+                          onChange={(e) =>
+                            onUpdateWidget(widget.id, { trendCompareColumn: e.target.value })
+                          }
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-medium text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
+                        >
+                          <option value="">อัตโนมัติ (ครึ่งช่วงข้อมูลล่าสุด)</option>
+                          <option value="date">วันที่ (date / เดือน-ปี)</option>
+                          {availableColumns.map((col) => (
+                            <option key={col} value={col}>
+                              {col}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          ข้อความกำกับแนวโน้ม (Label)
+                        </label>
+                        <input
+                          type="text"
+                          value={widget.trendLabel ?? 'เดือนก่อนหน้า'}
+                          onChange={(e) =>
+                            onUpdateWidget(widget.id, { trendLabel: e.target.value })
+                          }
+                          placeholder="เช่น เดือนก่อนหน้า (เว้นว่างเพื่อแสดงเฉพาะ % และตัวเลข)"
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          *ระบบแสดง ▲/▼ เปอร์เซ็นต์ และผลต่างตัวเลข (+/-) อย่างสวยงาม
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Conditional Color Formatting */}
@@ -836,27 +1008,27 @@ export const Inspector: React.FC<InspectorProps> = ({
             </div>
 
             {/* Number Formatting matching screenshot 2 */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
-                ตัวเลข
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-2.5">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                รูปแบบตัวเลข & ทศนิยม
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] text-slate-500 mb-0.5">รูปแบบ</label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-700">รูปแบบ</label>
                   <select
                     value={widget.numberFormat || 'number'}
                     onChange={(e) =>
                       onUpdateWidget(widget.id, { numberFormat: e.target.value as any })
                     }
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-medium text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none"
                   >
-                    <option value="number">ตัวเลข</option>
-                    <option value="currency">สกุลเงิน (฿)</option>
+                    <option value="number">ตัวเลขทั่วไป (1,234)</option>
+                    <option value="currency">สกุลเงินบาท (฿)</option>
                     <option value="percent">เปอร์เซ็นต์ (%)</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[10px] text-slate-500 mb-0.5">ทศนิยม</label>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-700">ทศนิยม</label>
                   <input
                     type="number"
                     min={0}
@@ -865,15 +1037,15 @@ export const Inspector: React.FC<InspectorProps> = ({
                     onChange={(e) =>
                       onUpdateWidget(widget.id, { decimals: parseInt(e.target.value) || 0 })
                     }
-                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-mono bg-white text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* พื้นหลัง และความโปร่งใส (Background & Transparency) */}
-            <div className="pt-2 border-t border-slate-100 space-y-2.5">
-              <div className="text-[11px] font-bold text-slate-400 mb-1 uppercase tracking-wide">
+            <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-3">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 พื้นหลังและกรอบวิชวล
               </div>
 
@@ -881,189 +1053,177 @@ export const Inspector: React.FC<InspectorProps> = ({
                 'พื้นหลังโปร่งใส (Transparent)',
                 widget.transparentBg === true,
                 (val) => onUpdateWidget(widget.id, { transparentBg: val }),
-                'toggle-transparent-bg'
+                'toggle-transparent-bg',
+                'ไม่มีพื้นหลัง แสดงลอยบนผืนงาน'
               )}
 
               {!widget.transparentBg && (
-                <div className="space-y-2 pt-1">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">สีพื้นหลัง</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="color"
-                          value={widget.cardBgColor || '#ffffff'}
-                          onChange={(e) => onUpdateWidget(widget.id, { cardBgColor: e.target.value })}
-                          className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0.5"
-                        />
-                        <input
-                          type="text"
-                          value={widget.cardBgColor || '#ffffff'}
-                          onChange={(e) => onUpdateWidget(widget.id, { cardBgColor: e.target.value })}
-                          className="flex-1 px-1.5 py-1 border border-slate-200 rounded text-[10px]"
-                        />
-                      </div>
+                <div className="space-y-3 pt-1 border-t border-slate-100">
+                  <ColorPickerField
+                    label="สีพื้นหลัง (Background Color)"
+                    value={widget.cardBgColor || '#ffffff'}
+                    onChange={(val) => onUpdateWidget(widget.id, { cardBgColor: val })}
+                    placeholder="#ffffff"
+                  />
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold text-slate-700">
+                        ความทึบแสง (Opacity)
+                      </label>
+                      <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-violet-100 text-violet-800 border border-violet-200">
+                        {widget.cardOpacity ?? 100}%
+                      </span>
                     </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">ความทึบแสง ({widget.cardOpacity ?? 100}%)</label>
+                    <div className="px-1 py-1">
                       <input
                         type="range"
                         min={10}
                         max={100}
                         value={widget.cardOpacity ?? 100}
-                        onChange={(e) => onUpdateWidget(widget.id, { cardOpacity: parseInt(e.target.value) })}
-                        className="w-full mt-1.5 accent-violet-600 cursor-pointer"
+                        onChange={(e) =>
+                          onUpdateWidget(widget.id, { cardOpacity: parseInt(e.target.value) })
+                        }
+                        className="w-full accent-violet-600 cursor-pointer h-2 bg-slate-200 rounded-lg appearance-none"
                       />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">สีเส้นขอบ</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="color"
-                          value={widget.cardBorderColor || '#e2e8f0'}
-                          onChange={(e) => onUpdateWidget(widget.id, { cardBorderColor: e.target.value })}
-                          className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0.5"
-                        />
-                        <input
-                          type="text"
-                          value={widget.cardBorderColor || '#e2e8f0'}
-                          onChange={(e) => onUpdateWidget(widget.id, { cardBorderColor: e.target.value })}
-                          className="flex-1 px-1.5 py-1 border border-slate-200 rounded text-[10px]"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">ความหนาขอบ</label>
-                      <select
-                        value={widget.cardBorderWidth ?? 1}
-                        onChange={(e) => onUpdateWidget(widget.id, { cardBorderWidth: parseInt(e.target.value) })}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
-                      >
-                        <option value={0}>ไม่มีขอบ (0px)</option>
-                        <option value={1}>บาง (1px)</option>
-                        <option value={2}>ปานกลาง (2px)</option>
-                        <option value={3}>หนา (3px)</option>
-                        <option value={4}>หนามาก (4px)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">เส้นขอบ</label>
-                      <select
-                        value={widget.cardBorderStyle || 'solid'}
-                        onChange={(e) => onUpdateWidget(widget.id, { cardBorderStyle: e.target.value as any })}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
-                      >
-                        <option value="solid">เส้นทึบ (Solid)</option>
-                        <option value="dashed">เส้นประ (Dashed)</option>
-                        <option value="dotted">เส้นจุด (Dotted)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">ความมนขอบ</label>
-                      <select
-                        value={widget.cardBorderRadius ?? 12}
-                        onChange={(e) => onUpdateWidget(widget.id, { cardBorderRadius: parseInt(e.target.value) })}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
-                      >
-                        <option value={0}>เหลี่ยม (0px)</option>
-                        <option value={8}>มนน้อย (8px)</option>
-                        <option value={12}>มนปกติ (12px)</option>
-                        <option value={16}>มนปานกลาง (16px)</option>
-                        <option value={24}>มนมาก (24px)</option>
-                        <option value={999}>ทรงแคปซูล</option>
-                      </select>
                     </div>
                   </div>
                 </div>
               )}
+
+              <div className="pt-2 border-t border-slate-100 space-y-3">
+                <div className="text-[11px] font-bold text-slate-600">เส้นขอบและการจัดมุม</div>
+
+                <ColorPickerField
+                  label="สีเส้นขอบ (Border Color)"
+                  value={widget.cardBorderColor || '#e2e8f0'}
+                  onChange={(val) => onUpdateWidget(widget.id, { cardBorderColor: val })}
+                  placeholder="#e2e8f0"
+                />
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-slate-700">
+                      ความหนาขอบ
+                    </label>
+                    <select
+                      value={widget.cardBorderWidth ?? 1}
+                      onChange={(e) =>
+                        onUpdateWidget(widget.id, { cardBorderWidth: parseInt(e.target.value) })
+                      }
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none font-medium"
+                    >
+                      <option value={0}>ไม่มีขอบ (0px)</option>
+                      <option value={1}>บาง (1px)</option>
+                      <option value={2}>ปานกลาง (2px)</option>
+                      <option value={3}>หนา (3px)</option>
+                      <option value={4}>หนามาก (4px)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-semibold text-slate-700">
+                      สไตล์เส้นขอบ
+                    </label>
+                    <select
+                      value={widget.cardBorderStyle || 'solid'}
+                      onChange={(e) =>
+                        onUpdateWidget(widget.id, { cardBorderStyle: e.target.value as any })
+                      }
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none font-medium"
+                    >
+                      <option value="solid">เส้นทึบ (Solid)</option>
+                      <option value="dashed">เส้นประ (Dashed)</option>
+                      <option value="dotted">เส้นจุด (Dotted)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-700">
+                    ความมนขอบ (Border Radius)
+                  </label>
+                  <select
+                    value={widget.cardBorderRadius ?? 12}
+                    onChange={(e) =>
+                      onUpdateWidget(widget.id, { cardBorderRadius: parseInt(e.target.value) })
+                    }
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none font-medium"
+                  >
+                    <option value={0}>เหลี่ยมฉาก (0px)</option>
+                    <option value={6}>มนน้อย (6px)</option>
+                    <option value={12}>มนปกติ (12px)</option>
+                    <option value={16}>มนปานกลาง (16px)</option>
+                    <option value={24}>มนมาก (24px)</option>
+                    <option value={999}>ทรงกลมแคปซูล</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Shape Specific Styling if widget is a shape */}
             {widget.type.startsWith('shape_') && (
-              <div className="pt-2 border-t border-slate-100 space-y-2.5">
-                <div className="text-[11px] font-bold text-violet-700 mb-1 uppercase tracking-wide flex items-center gap-1">
+              <div className="p-3.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-3">
+                <div className="text-[11px] font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1.5">
                   <Shapes className="w-3.5 h-3.5" />
                   <span>การปรับแต่งรูปทรง (Shape Studio)</span>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] text-slate-500 mb-0.5">ข้อความด้านในรูปทรง</label>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ข้อความด้านในรูปทรง
+                  </label>
                   <input
                     type="text"
                     value={widget.shapeText || widget.title || ''}
-                    onChange={(e) => onUpdateWidget(widget.id, { shapeText: e.target.value, title: e.target.value })}
+                    onChange={(e) =>
+                      onUpdateWidget(widget.id, { shapeText: e.target.value, title: e.target.value })
+                    }
                     placeholder="พิมพ์ข้อความในรูปทรง..."
-                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded text-xs"
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-400"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-0.5">สีพื้นรูปทรง</label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="color"
-                        value={widget.shapeFillColor || '#ede9fe'}
-                        onChange={(e) => onUpdateWidget(widget.id, { shapeFillColor: e.target.value })}
-                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0.5"
-                      />
-                      <input
-                        type="text"
-                        value={widget.shapeFillColor || '#ede9fe'}
-                        onChange={(e) => onUpdateWidget(widget.id, { shapeFillColor: e.target.value })}
-                        className="flex-1 px-1.5 py-1 border border-slate-200 rounded text-[10px]"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-0.5">สีเส้นรูปทรง</label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="color"
-                        value={widget.shapeBorderColor || '#8b5cf6'}
-                        onChange={(e) => onUpdateWidget(widget.id, { shapeBorderColor: e.target.value })}
-                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0.5"
-                      />
-                      <input
-                        type="text"
-                        value={widget.shapeBorderColor || '#8b5cf6'}
-                        onChange={(e) => onUpdateWidget(widget.id, { shapeBorderColor: e.target.value })}
-                        className="flex-1 px-1.5 py-1 border border-slate-200 rounded text-[10px]"
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2.5">
+                  <ColorPickerField
+                    label="สีพื้นรูปทรง (Fill Color)"
+                    value={widget.shapeFillColor || '#ede9fe'}
+                    onChange={(val) => onUpdateWidget(widget.id, { shapeFillColor: val })}
+                    placeholder="#ede9fe"
+                  />
+
+                  <ColorPickerField
+                    label="สีเส้นรูปทรง (Border Color)"
+                    value={widget.shapeBorderColor || '#8b5cf6'}
+                    onChange={(val) => onUpdateWidget(widget.id, { shapeBorderColor: val })}
+                    placeholder="#8b5cf6"
+                  />
+
+                  <ColorPickerField
+                    label="สีข้อความ (Text Color)"
+                    value={widget.shapeTextColor || '#5b21b6'}
+                    onChange={(val) => onUpdateWidget(widget.id, { shapeTextColor: val })}
+                    placeholder="#5b21b6"
+                  />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-0.5">สีข้อความ</label>
-                    <input
-                      type="color"
-                      value={widget.shapeTextColor || '#5b21b6'}
-                      onChange={(e) => onUpdateWidget(widget.id, { shapeTextColor: e.target.value })}
-                      className="w-full h-7 rounded border border-slate-300 cursor-pointer p-0.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-0.5">ขนาดฟอนต์</label>
-                    <select
-                      value={widget.shapeTextSize || 14}
-                      onChange={(e) => onUpdateWidget(widget.id, { shapeTextSize: parseInt(e.target.value) })}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
-                    >
-                      <option value={11}>เล็ก (11px)</option>
-                      <option value={13}>ปกติ (13px)</option>
-                      <option value={16}>ปานกลาง (16px)</option>
-                      <option value={20}>ใหญ่ (20px)</option>
-                      <option value={24}>ใหญ่พิเศษ (24px)</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ขนาดฟอนต์
+                  </label>
+                  <select
+                    value={widget.shapeTextSize || 14}
+                    onChange={(e) =>
+                      onUpdateWidget(widget.id, { shapeTextSize: parseInt(e.target.value) })
+                    }
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-medium text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-400 outline-none"
+                  >
+                    <option value={11}>เล็ก (11px)</option>
+                    <option value={13}>ปกติ (13px)</option>
+                    <option value={16}>ปานกลาง (16px)</option>
+                    <option value={20}>ใหญ่ (20px)</option>
+                    <option value={24}>ใหญ่พิเศษ (24px)</option>
+                  </select>
                 </div>
               </div>
             )}

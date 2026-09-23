@@ -74,6 +74,9 @@ export interface VisualWidget {
   color?: string;
   paletteIndex?: number;
   showTitle?: boolean;
+  showAggregationLabel?: boolean;
+  showPrefix?: boolean;
+  showSuffix?: boolean;
   showLegend?: boolean;
   showDataLabels?: boolean;
   showGrid?: boolean;

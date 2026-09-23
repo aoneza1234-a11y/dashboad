@@ -102,6 +102,10 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
   const [maintContact, setMaintContact] = useState(siteStatus.contactEmail || 'admin@studio-bi.com');
   const [statusSaved, setStatusSaved] = useState(false);
 
+  // Platform & Program Name settings
+  const [platformName, setPlatformName] = useState(siteStatus.platformName || 'Studio BI Analytics');
+  const [platformSubtitle, setPlatformSubtitle] = useState(siteStatus.platformSubtitle || 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ');
+
   // CMS settings
   const [bannerEnabled, setBannerEnabled] = useState(siteStatus.cmsSettings?.bannerEnabled || false);
   const [bannerMsg, setBannerMsg] = useState(siteStatus.cmsSettings?.bannerMessage || '');
@@ -119,7 +123,10 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
   useEffect(() => {
     const handleStatusUpdate = () => {
-      setSiteStatus(getSiteStatus());
+      const s = getSiteStatus();
+      setSiteStatus(s);
+      setPlatformName(s.platformName || 'Studio BI Analytics');
+      setPlatformSubtitle(s.platformSubtitle || 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ');
     };
     window.addEventListener('site_status_changed', handleStatusUpdate);
     return () => window.removeEventListener('site_status_changed', handleStatusUpdate);
@@ -144,6 +151,8 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
   const handleSaveCMS = () => {
     const updated = saveSiteStatus({
+      platformName: platformName.trim() || 'Studio BI Analytics',
+      platformSubtitle: platformSubtitle.trim(),
       cmsSettings: {
         ...siteStatus.cmsSettings,
         bannerEnabled,
@@ -153,7 +162,7 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
       },
     });
     setSiteStatus(updated);
-    alert('บันทึกการตั้งค่า CMS & SEO เรียบร้อยแล้ว');
+    alert('บันทึกชื่อโปรแกรมและการตั้งค่า CMS & SEO เรียบร้อยแล้ว');
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -1020,12 +1029,45 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
           {/* SECTION: CMS & SEO */}
           {activeSection === 'cms_seo' && (
             <div className="space-y-6 max-w-4xl">
-              <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-4">
+              <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-5">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <FileCode className="w-5 h-5 text-yellow-400" />
-                  <span>แถบประกาศประชาสัมพันธ์ (Announcement Banner) & SEO</span>
+                  <span>ตั้งค่าชื่อโปรแกรม (Branding) & ประกาศประชาสัมพันธ์ (CMS)</span>
                 </h3>
 
+                {/* 1. App Title / Platform Name */}
+                <div className="p-4 rounded-2xl bg-[#1e193c] border border-violet-500/30 space-y-3">
+                  <div className="text-xs font-bold text-violet-300 flex items-center gap-1.5">
+                    <span>🏷️ ชื่อโปรแกรม / ชื่อระบบ (Program / Platform Name)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    ชื่อนี้จะแสดงเป็นหัวโปรแกรมในหน้าผู้ใช้งาน (User Portal), แดชบอร์ดสตูดิโอ (Studio BI), และลิงก์สำหรับผู้ชม (Viewer Portal)
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-300 font-semibold block">ชื่อโปรแกรมหลัก:</label>
+                      <input
+                        type="text"
+                        value={platformName}
+                        onChange={(e) => setPlatformName(e.target.value)}
+                        placeholder="เช่น Studio BI Analytics, บริษัท สยาม บิสซิเนส อินเทลลิเจนซ์"
+                        className="w-full bg-[#120d26] border border-violet-500/50 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-violet-400 font-semibold"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-300 font-semibold block">คำบรรยาย / สโลแกน:</label>
+                      <input
+                        type="text"
+                        value={platformSubtitle}
+                        onChange={(e) => setPlatformSubtitle(e.target.value)}
+                        placeholder="เช่น แพลตฟอร์มสร้างและวิเคราะห์แดชบอร์ดอัจฉริยะ"
+                        className="w-full bg-[#120d26] border border-violet-500/50 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-violet-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Announcement Banner */}
                 <div className="p-4 rounded-2xl bg-[#1e193c] border border-white/10 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
