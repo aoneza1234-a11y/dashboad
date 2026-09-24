@@ -17,6 +17,7 @@ import { VersionHistoryModal } from './components/VersionHistoryModal';
 import { MyDashboardsModal } from './components/MyDashboardsModal';
 import { DeveloperConsole } from './components/DeveloperConsole';
 import { AdminPlatform } from './components/AdminPlatform/AdminPlatform';
+import { AdminAccessGate } from './components/AdminAccessGate';
 import { PublicViewerPortal } from './components/PublicViewerPortal';
 import { MaintenanceScreen } from './components/MaintenanceScreen';
 import { AuthModal } from './components/AuthModal';
@@ -25,7 +26,7 @@ import { UserPublishModal } from './components/UserPublishModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { UserNotificationsModal } from './components/UserNotificationsModal';
 import { getThemeStyles } from './utils/themeStyles';
-import { getSiteStatus, SiteStatus, toggleSiteOnline } from './services/siteStatusStore';
+import { getSiteStatus, SiteStatus, toggleSiteOnline, isAdminAuthenticatedSession, logoutAdminSession } from './services/siteStatusStore';
 import { Lock } from 'lucide-react';
 
 import {
@@ -54,11 +55,55 @@ import {
 } from './services/googleSheets';
 
 export default function App() {
-  // Main Data and Widgets
+  // Main Data and Widgets with persistent storage support
   const [widgets, setWidgets] = useState<VisualWidget[]>(INITIAL_WIDGETS);
-  const [salesData, setSalesData] = useState<SalesRecord[]>(INITIAL_SALES_RECORDS);
+  const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('bi_studio_sales_data_v2');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load stored salesData', e);
+      }
+    }
+    return INITIAL_SALES_RECORDS;
+  });
+
+  // Automatically persist salesData whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && Array.isArray(salesData) && salesData.length > 0) {
+      try {
+        localStorage.setItem('bi_studio_sales_data_v2', JSON.stringify(salesData));
+      } catch (e) {
+        console.warn('Failed to persist salesData', e);
+      }
+    }
+  }, [salesData]);
+
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>('chart-category');
-  const [dashboardTitle, setDashboardTitle] = useState('ภาพรวมยอดขาย');
+  const [dashboardTitle, setDashboardTitle] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('bi_studio_dashboard_title_v2');
+      if (stored && stored.trim()) return stored;
+    }
+    return 'ภาพรวมยอดขาย';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && dashboardTitle) {
+      try {
+        localStorage.setItem('bi_studio_dashboard_title_v2', dashboardTitle);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [dashboardTitle]);
+
   const [isSaved, setIsSaved] = useState(true);
 
   // Theme State
@@ -86,38 +131,46 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [activeNav, setActiveNav] = useState('canvas');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [viewMode, setViewMode] = useState<'studio' | 'dev_console' | 'public_viewer'>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const isViewerParam =
-        params.get('portal') === 'viewer' ||
-        params.get('mode') === 'viewer' ||
-        params.get('view') === 'public';
-      const isViewerHash =
-        window.location.hash.includes('viewer') || window.location.hash.includes('public');
-      const isViewerPath = window.location.pathname.startsWith('/view');
-      if (isViewerParam || isViewerHash || isViewerPath) {
-        return 'public_viewer';
-      }
+  const resolveCurrentViewMode = (): 'studio' | 'dev_console' | 'public_viewer' => {
+    if (typeof window === 'undefined') return 'studio';
+    const params = new URLSearchParams(window.location.search);
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
 
-      const isUserParam =
-        params.get('portal') === 'user' ||
-        params.get('portal') === 'app' ||
-        params.get('portal') === 'studio' ||
-        params.get('mode') === 'user' ||
-        params.get('mode') === 'app' ||
-        params.get('mode') === 'studio' ||
-        window.location.hash.includes('user') ||
-        window.location.hash.includes('studio');
-      if (isUserParam) {
-        return 'studio';
-      }
-
-      // ค่าเริ่มต้นของเซิร์ฟเวอร์คือ ระบบจัดการเว็บไซต์และมอนิเตอร์ (Admin Platform)
+    // 1. Explicit Admin request (?portal=admin, /admin, #admin)
+    const isAdmin =
+      params.get('portal') === 'admin' ||
+      params.get('mode') === 'admin' ||
+      params.get('portal') === 'dev_console' ||
+      path === '/admin' ||
+      path.startsWith('/admin/') ||
+      hash.includes('admin');
+    if (isAdmin) {
       return 'dev_console';
     }
-    return 'dev_console';
-  });
+
+    // 2. Explicit Viewer request (?portal=viewer, /view, #viewer)
+    const isViewer =
+      params.get('portal') === 'viewer' ||
+      params.get('mode') === 'viewer' ||
+      params.get('view') === 'public' ||
+      path.startsWith('/view') ||
+      hash.includes('viewer') ||
+      hash.includes('public');
+    if (isViewer) {
+      return 'public_viewer';
+    }
+
+    // 3. User Portal / Studio request or DEFAULT when URL is cleared/deleted by user!
+    // หากผู้ใช้ลบพารามิเตอร์ของลิงก์ออก จะกลับมาที่หน้าผู้ใช้งาน (Studio) เสมอ และไม่มีทางหลุดเข้าระบบหลังบ้าน
+    const siteConfig = getSiteStatus();
+    if (siteConfig.defaultLandingPortal === 'viewer') {
+      return 'public_viewer';
+    }
+    return 'studio';
+  };
+
+  const [viewMode, setViewMode] = useState<'studio' | 'dev_console' | 'public_viewer'>(resolveCurrentViewMode);
 
   // Team Auth State & RBAC
   const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
@@ -125,34 +178,7 @@ export default function App() {
   // Sync URL changes with viewMode
   useEffect(() => {
     const handlePopState = () => {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const isViewer =
-          params.get('portal') === 'viewer' ||
-          params.get('mode') === 'viewer' ||
-          params.get('view') === 'public' ||
-          window.location.hash.includes('viewer') ||
-          window.location.pathname.startsWith('/view');
-
-        const isUser =
-          params.get('portal') === 'user' ||
-          params.get('portal') === 'app' ||
-          params.get('portal') === 'studio' ||
-          params.get('mode') === 'user' ||
-          params.get('mode') === 'app' ||
-          params.get('mode') === 'studio' ||
-          window.location.hash.includes('user') ||
-          window.location.hash.includes('studio');
-
-        if (isViewer) {
-          setViewMode('public_viewer');
-        } else if (isUser) {
-          setViewMode('studio');
-        } else {
-          // Default portal is Admin Platform
-          setViewMode('dev_console');
-        }
-      }
+      setViewMode(resolveCurrentViewMode());
     };
 
     const handleSessionUpdate = () => {
@@ -161,11 +187,13 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('team_session_changed', handleSessionUpdate);
+    window.addEventListener('admin_auth_changed', handleSessionUpdate);
     return () => {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('team_session_changed', handleSessionUpdate);
+      window.removeEventListener('admin_auth_changed', handleSessionUpdate);
     };
-  }, [currentTeamUser]);
+  }, []);
 
   // Filter State & Studio Canvas (รองรับ Cross-filtering, ไม่นับช่องว่าง, และเงื่อนไขย่อย)
   const [siteStatus, setSiteStatus] = useState<SiteStatus>(getSiteStatus());
@@ -234,30 +262,53 @@ export default function App() {
 
   // Connection & Sync
   const [isSyncing, setIsSyncing] = useState(false);
-  const [connectionConfig, setConnectionConfig] = useState<SheetConnectionConfig>({
-    spreadsheetId: '',
-    spreadsheetTitle: 'ยอดขายรายไตรมาส',
-    sheetName: 'ยอดขายรายไตรมาส',
-    availableSheets: ['ยอดขายรายไตรมาส', 'Sheet1'],
-    headerRow: 1,
-    dataStartRow: 2,
-    dataEndRow: null,
-    status: 'connected',
-    lastSyncedAt: '08:22',
-    mode: 'sample',
-    detectedHeaders: [
-      'ลำดับ',
-      'วันที่',
-      'เลขที่คำสั่งซื้อ',
-      'ชื่อสินค้า',
-      'หมวดหมู่',
-      'ภูมิภาค',
-      'จำนวน',
-      'ยอดขาย (บาท)',
-      'ต้นทุน (บาท)',
-      'กำไรขั้นต้น (บาท)',
-    ],
+  const [connectionConfig, setConnectionConfig] = useState<SheetConnectionConfig>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('bi_studio_sheet_config_v2');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed to load sheet config from storage', e);
+      }
+    }
+    return {
+      spreadsheetId: '',
+      spreadsheetTitle: 'ยอดขายรายไตรมาส',
+      sheetName: 'ยอดขายรายไตรมาส',
+      availableSheets: ['ยอดขายรายไตรมาส', 'Sheet1'],
+      headerRow: 1,
+      dataStartRow: 2,
+      dataEndRow: null,
+      status: 'connected',
+      lastSyncedAt: '08:22',
+      mode: 'sample',
+      detectedHeaders: [
+        'ลำดับ',
+        'วันที่',
+        'เลขที่คำสั่งซื้อ',
+        'ชื่อสินค้า',
+        'หมวดหมู่',
+        'ภูมิภาค',
+        'จำนวน',
+        'ยอดขาย (บาท)',
+        'ต้นทุน (บาท)',
+        'กำไรขั้นต้น (บาท)',
+      ],
+    };
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && connectionConfig) {
+      try {
+        localStorage.setItem('bi_studio_sheet_config_v2', JSON.stringify(connectionConfig));
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [connectionConfig]);
 
   // History Stack for Undo / Redo
   const [history, setHistory] = useState<VisualWidget[][]>([INITIAL_WIDGETS]);
@@ -670,13 +721,37 @@ export default function App() {
   }, [themeConfig.fontFamily]);
 
   if (viewMode === 'dev_console') {
+    // ป้องกันระบบหลังบ้าน: ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือผ่านรหัสผ่าน Master Passcode หรือไม่
+    const isAuthorizedAdmin = currentTeamUser?.role === 'admin' || isAdminAuthenticatedSession();
+
+    if (!isAuthorizedAdmin) {
+      return (
+        <AdminAccessGate
+          onUnlockSuccess={() => {
+            setCurrentTeamUser(getCurrentUser());
+            setViewMode('dev_console');
+          }}
+          onBackToUserPortal={() => {
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('portal');
+              url.searchParams.delete('mode');
+              window.history.pushState({}, '', url.pathname);
+            }
+            setViewMode('studio');
+          }}
+        />
+      );
+    }
+
     return (
       <AdminPlatform
         onBackToUserPortal={() => {
           if (typeof window !== 'undefined') {
             const url = new URL(window.location.href);
-            url.searchParams.set('portal', 'user');
-            window.history.pushState({}, '', url.toString());
+            url.searchParams.delete('portal');
+            url.searchParams.delete('mode');
+            window.history.pushState({}, '', url.pathname);
           }
           setViewMode('studio');
         }}
@@ -984,6 +1059,10 @@ export default function App() {
         isOpen={isDataEditorOpen}
         onClose={() => setIsDataEditorOpen(false)}
         salesData={salesData}
+        datasetTitle={connectionConfig.spreadsheetTitle || dashboardTitle}
+        connectionConfig={connectionConfig}
+        onRefreshFromSheet={handleSyncData}
+        isSyncing={isSyncing}
         onSaveData={(newData) => {
           setSalesData(newData);
           setConnectionConfig((prev) => ({
@@ -1006,6 +1085,7 @@ export default function App() {
         onSignIn={handleGoogleSignIn}
         onSignOut={handleGoogleSignOut}
         salesData={salesData}
+        onOpenDataEditor={() => setIsDataEditorOpen(true)}
         onImportData={(importedRecords, title, detectedHeaders) => {
           setSalesData(importedRecords);
           setDashboardTitle(title);

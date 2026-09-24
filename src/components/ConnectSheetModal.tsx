@@ -36,6 +36,7 @@ interface ConnectSheetModalProps {
   onSignOut: () => Promise<void>;
   salesData: SalesRecord[];
   onImportData: (records: SalesRecord[], sheetTitle: string, detectedHeaders?: string[]) => void;
+  onOpenDataEditor?: () => void;
 }
 
 export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
@@ -49,6 +50,7 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
   onSignOut,
   salesData,
   onImportData,
+  onOpenDataEditor,
 }) => {
   const [sheetInput, setSheetInput] = useState(config.spreadsheetId || '');
   const [selectedSheetTab, setSelectedSheetTab] = useState(config.sheetName || 'ยอดขายรายไตรมาส');
@@ -67,6 +69,7 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
   const [isDiscoveringSheets, setIsDiscoveringSheets] = useState(false);
   const [previewRecords, setPreviewRecords] = useState<SalesRecord[]>([]);
   const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
+  const [allFetchedRecords, setAllFetchedRecords] = useState<SalesRecord[]>([]);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Auto-discover sheet tabs whenever sheet link/ID is entered
@@ -169,11 +172,33 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
         return;
       }
 
+      setAllFetchedRecords(res.records);
       setPreviewRecords(res.records.slice(0, 5));
       setPreviewHeaders(res.headers);
+
+      // เมื่อดึงข้อมูลสมบูรณ์ ให้นำชุดข้อมูลนี้ไปใช้งานในระบบและแดชบอร์ดทันที!
+      const sheetTitle = cleanId ? `Google Sheet (${cleanId.slice(0, 8)}...)` : 'ยอดขายรายไตรมาส';
+      const updatedConfig: SheetConnectionConfig = {
+        ...config,
+        spreadsheetId: cleanId,
+        spreadsheetTitle: sheetTitle,
+        sheetName: activeTab,
+        availableSheets: tabs,
+        headerRow,
+        dataStartRow,
+        dataEndRow: endRowNumber,
+        status: 'connected',
+        lastSyncedAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        mode: accessToken ? 'sheets_api' : 'public_url',
+        detectedHeaders: res.headers,
+      };
+
+      onUpdateConfig(updatedConfig);
+      onImportData(res.records, updatedConfig.spreadsheetTitle, res.headers);
+
       setStatusMsg({
         type: 'success',
-        text: `ดึงข้อมูลสำเร็จ! พบ ${res.records.length} แถว และ ${res.headers.length} คอลัมน์ จากแผ่นงาน "${activeTab}" (หัวตารางแถว ${headerRow}, เริ่มอ่านแถว ${dataStartRow})`,
+        text: `ดึงข้อมูลสำเร็จและนำเข้าแดชบอร์ดแล้ว! พบ ${res.records.length} แถว และ ${res.headers.length} คอลัมน์ (พร้อมเปิดแก้ไขชุดข้อมูลได้ทันที)`,
       });
     } catch (err: any) {
       console.error(err);
@@ -193,16 +218,16 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
     }
   };
 
-  const handleApplyToDashboard = async () => {
+  const handleApplyToDashboard = async (andOpenEditor: boolean = false) => {
     const cleanId = extractSpreadsheetId(sheetInput);
     const endRowNumber = dataEndRow.trim() ? parseInt(dataEndRow) : undefined;
 
     setIsLoading(true);
     try {
-      let finalRecords: SalesRecord[] = [];
-      let finalHeaders: string[] = [];
+      let finalRecords: SalesRecord[] = allFetchedRecords.length > 0 ? allFetchedRecords : [];
+      let finalHeaders: string[] = previewHeaders.length > 0 ? previewHeaders : [];
 
-      if (sheetInput.trim()) {
+      if (finalRecords.length === 0 && sheetInput.trim()) {
         const res = await fetchSheetRowsWithConfig(
           cleanId,
           selectedSheetTab,
@@ -213,7 +238,8 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
         );
         finalRecords = res.records;
         finalHeaders = res.headers;
-      } else {
+        setAllFetchedRecords(res.records);
+      } else if (finalRecords.length === 0) {
         // Use current data
         finalRecords = salesData;
         finalHeaders = ['ลำดับ', 'วันที่', 'เลขที่คำสั่งซื้อ', 'ชื่อสินค้า', 'หมวดหมู่', 'ภูมิภาค', 'จำนวน', 'ยอดขาย', 'ต้นทุน', 'กำไร'];
@@ -244,7 +270,10 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
       setStatusMsg({ type: 'success', text: 'นำเข้าข้อมูลเข้าแดชบอร์ดเรียบร้อยแล้ว!' });
       setTimeout(() => {
         onClose();
-      }, 700);
+        if (andOpenEditor && onOpenDataEditor) {
+          onOpenDataEditor();
+        }
+      }, 500);
     } catch (err: any) {
       console.error(err);
       setStatusMsg({ type: 'error', text: err.message || 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' });
@@ -677,23 +706,37 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-[#2d244f] bg-[#141126] flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-[#2d244f] bg-[#141126] flex items-center justify-between flex-wrap gap-2">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-lg bg-[#201a3b] hover:bg-[#2b224e] text-slate-300 text-xs font-medium transition cursor-pointer"
           >
-            ยกเลิก
+            ปิดหน้าต่าง
           </button>
 
-          <button
-            id="btn-apply-sheet-import"
-            onClick={handleApplyToDashboard}
-            disabled={isLoading}
-            className="px-5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-violet-900/40 transition cursor-pointer disabled:opacity-50"
-          >
-            <Check className="w-4 h-4 stroke-[2.5]" />
-            <span>นำเข้าข้อมูลเข้าแดชบอร์ด</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenDataEditor && (previewRecords.length > 0 || allFetchedRecords.length > 0) && (
+              <button
+                type="button"
+                onClick={() => handleApplyToDashboard(true)}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-200 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <Table className="w-3.5 h-3.5 text-emerald-400" />
+                <span>นำเข้าและเปิดแก้ไขชุดข้อมูล</span>
+              </button>
+            )}
+
+            <button
+              id="btn-apply-sheet-import"
+              onClick={() => handleApplyToDashboard(false)}
+              disabled={isLoading}
+              className="px-5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-violet-900/40 transition cursor-pointer disabled:opacity-50"
+            >
+              <Check className="w-4 h-4 stroke-[2.5]" />
+              <span>นำเข้าข้อมูลเข้าแดชบอร์ด</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

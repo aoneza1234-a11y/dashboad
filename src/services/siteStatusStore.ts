@@ -32,12 +32,15 @@ export interface SiteStatus {
   contactEmail?: string;
   updatedAt: string;
   updatedBy: string;
+  defaultLandingPortal?: 'studio' | 'viewer';
+  adminPasscode?: string;
   viewerConfig: ViewerShareConfig;
   cmsSettings: AdminCMSSettings;
   securitySettings: AdminSecuritySettings;
 }
 
 const STORAGE_KEY = 'bi_studio_site_status_v2';
+const ADMIN_SESSION_KEY = 'bi_studio_admin_auth_v1';
 
 const DEFAULT_STATUS: SiteStatus = {
   platformName: 'Studio BI Analytics',
@@ -48,6 +51,8 @@ const DEFAULT_STATUS: SiteStatus = {
   contactEmail: 'admin@studio-bi.com',
   updatedAt: new Date().toISOString(),
   updatedBy: 'ผู้ดูแลระบบ (Owner)',
+  defaultLandingPortal: 'studio',
+  adminPasscode: 'admin1234',
   viewerConfig: {
     passwordEnabled: false,
     password: '',
@@ -141,4 +146,37 @@ export function incrementViewerCount(): void {
       totalViewsCount: (current.viewerConfig?.totalViewsCount || 0) + 1,
     },
   });
+}
+
+export function verifyAdminPasscode(inputPasscode: string): boolean {
+  const current = getSiteStatus();
+  const validPass = current.adminPasscode || 'admin1234';
+  return inputPasscode.trim() === validPass.trim();
+}
+
+export function isAdminAuthenticatedSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setAdminAuthenticatedSession(authenticated: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (authenticated) {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
+    } else {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    }
+    window.dispatchEvent(new Event('admin_auth_changed'));
+  } catch (err) {
+    console.error('Failed to set admin auth session', err);
+  }
+}
+
+export function logoutAdminSession(): void {
+  setAdminAuthenticatedSession(false);
 }

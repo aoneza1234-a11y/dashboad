@@ -11,8 +11,11 @@ import {
   Search,
   Columns,
   Sparkles,
+  RefreshCw,
+  ExternalLink,
+  Database,
 } from 'lucide-react';
-import { SalesRecord } from '../types';
+import { SalesRecord, SheetConnectionConfig } from '../types';
 import { INITIAL_SALES_RECORDS } from '../data/sampleData';
 
 interface DataEditorModalProps {
@@ -21,6 +24,10 @@ interface DataEditorModalProps {
   salesData: SalesRecord[];
   onSaveData: (newData: SalesRecord[]) => void;
   datasetTitle?: string;
+  onRefreshFromSheet?: () => Promise<void> | void;
+  isSyncing?: boolean;
+  onOpenConnectSheet?: () => void;
+  connectionConfig?: SheetConnectionConfig;
 }
 
 export const DataEditorModal: React.FC<DataEditorModalProps> = ({
@@ -29,6 +36,10 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   salesData,
   onSaveData,
   datasetTitle = 'ชุดข้อมูลภาพรวม',
+  onRefreshFromSheet,
+  isSyncing = false,
+  onOpenConnectSheet,
+  connectionConfig,
 }) => {
   const [records, setRecords] = useState<any[]>(salesData);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -36,7 +47,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   const [newColumnName, setNewColumnName] = useState('');
   const [showAddColumn, setShowAddColumn] = useState(false);
 
-  // Sync state when opened
+  // Sync state when opened or salesData changes externally
   React.useEffect(() => {
     if (isOpen) {
       setRecords(Array.isArray(salesData) ? JSON.parse(JSON.stringify(salesData)) : []);
@@ -163,6 +174,29 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
     }, 900);
   };
 
+  const handleExportCSV = () => {
+    if (records.length === 0) return;
+    const headers = dynamicColumns;
+    const csvRows = [
+      headers.map((h) => `"${h}"`).join(','),
+      ...records.map((row) =>
+        headers
+          .map((h) => {
+            const val = row[h] !== undefined && row[h] !== null ? String(row[h]) : '';
+            return `"${val.replace(/"/g, '""')}"`;
+          })
+          .join(',')
+      ),
+    ];
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dataset_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredRecordsWithIndex = useMemo(() => {
     if (!searchQuery.trim()) {
       return records.map((r, i) => ({ record: r, originalIndex: i }));
@@ -219,17 +253,27 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-300">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-300 shrink-0">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                 <span>จัดการและแก้ไขชุดข้อมูล: {datasetTitle}</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
                   {records.length} แถว • {dynamicColumns.length} คอลัมน์
                 </span>
+                {connectionConfig?.spreadsheetId ? (
+                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-violet-100 text-violet-800 font-medium border border-violet-200 flex items-center gap-1">
+                    <Database className="w-3 h-3 text-violet-600" />
+                    <span>Google Sheets: {connectionConfig.sheetName || 'ชีตหลัก'}</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 font-medium">
+                    ชุดข้อมูลในเครื่อง
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
                 แก้ไขค่าในเซลล์ได้อิสระ ข้อมูลจะถูกนำไปอัปเดตกราฟ แดชบอร์ด และบันทึกลงบัญชีของคุณทันที
@@ -242,12 +286,25 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onRefreshFromSheet && connectionConfig?.spreadsheetId && (
+              <button
+                onClick={() => onRefreshFromSheet()}
+                disabled={isSyncing}
+                className="px-3 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 border border-violet-300 text-violet-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                title="ดึงข้อมูลอัปเดตล่าสุดจาก Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'กำลังดึง...' : 'ดึงข้อมูลล่าสุดจากชีต'}</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Action Toolbar */}
@@ -267,6 +324,15 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
             >
               <Columns className="w-3.5 h-3.5 text-violet-600" />
               <span>+ เพิ่มคอลัมน์ใหม่</span>
+            </button>
+
+            <button
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium flex items-center gap-1.5 transition cursor-pointer"
+              title="ดาวน์โหลดชุดข้อมูลที่แก้ไขเป็นไฟล์ CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>ส่งออก CSV</span>
             </button>
 
             <button

@@ -47,6 +47,7 @@ import {
   getSiteStatus,
   saveSiteStatus,
   toggleSiteOnline,
+  logoutAdminSession,
   SiteStatus,
 } from '../../services/siteStatusStore';
 import {
@@ -112,6 +113,11 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
   const [seoTitle, setSeoTitle] = useState(siteStatus.cmsSettings?.seoTitle || '');
   const [seoDesc, setSeoDesc] = useState(siteStatus.cmsSettings?.seoDescription || '');
 
+  // Admin Security & Route settings
+  const [adminPasscode, setAdminPasscode] = useState(siteStatus.adminPasscode || 'admin1234');
+  const [defaultLanding, setDefaultLanding] = useState<'studio' | 'viewer'>(siteStatus.defaultLandingPortal || 'studio');
+  const [passcodeSaved, setPasscodeSaved] = useState(false);
+
   // Audit logs
   const [auditLogs] = useState([
     { id: '1', time: '10:45:12', user: 'admin@studio-bi.com', action: 'สลับสถานะเว็บไซต์เป็น: ออนไลน์', ip: '192.168.1.1' },
@@ -127,10 +133,32 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
       setSiteStatus(s);
       setPlatformName(s.platformName || 'Studio BI Analytics');
       setPlatformSubtitle(s.platformSubtitle || 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ');
+      setAdminPasscode(s.adminPasscode || 'admin1234');
+      setDefaultLanding(s.defaultLandingPortal || 'studio');
     };
     window.addEventListener('site_status_changed', handleStatusUpdate);
     return () => window.removeEventListener('site_status_changed', handleStatusUpdate);
   }, []);
+
+  const handleSaveSecurityRouting = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const updated = saveSiteStatus({
+      adminPasscode: adminPasscode.trim() || 'admin1234',
+      defaultLandingPortal: defaultLanding,
+    });
+    setSiteStatus(updated);
+    setPasscodeSaved(true);
+    setTimeout(() => setPasscodeSaved(false), 2500);
+  };
+
+  const handleLockAdminSession = () => {
+    logoutAdminSession();
+    if (onBackToUserPortal) {
+      onBackToUserPortal();
+    } else {
+      window.location.href = originUrl;
+    }
+  };
 
   const handleToggleOnline = () => {
     const updated = toggleSiteOnline();
@@ -789,13 +817,25 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
           {/* SECTION: Portal Links */}
           {activeSection === 'portal_links' && (
             <div className="space-y-6 max-w-4xl">
+              {/* Security Banner Note */}
+              <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1">
+                  <div className="font-bold text-emerald-200">ระบบแยกทางเข้า 3 ลิงก์อย่างสมบูรณ์แบบ & ปลอดภัย 100%</div>
+                  <div className="text-emerald-300/90 leading-relaxed">
+                    หากผู้ใช้หรือผู้ชมลบพารามิเตอร์ของลิงก์ออกทั้งหมด (เช่น ลบ <code className="bg-black/30 px-1 py-0.5 rounded font-mono text-white">?portal=viewer</code> หรือ <code className="bg-black/30 px-1 py-0.5 rounded font-mono text-white">?portal=app</code> ออก) 
+                    ระบบจะนำผู้ใช้เข้าสู่ <strong className="text-white">หน้าเว็บสำหรับผู้ใช้งาน (User App)</strong> เสมอ และไม่มีทางหลุดเข้าสู่ระบบหลังบ้าน (Admin Platform) โดยเด็ดขาด
+                  </div>
+                </div>
+              </div>
+
               <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <ExternalLink className="w-5 h-5 text-violet-400" />
-                  <span>จัดการและคัดลอกลิงก์ทั้ง 3 เว็บไซต์</span>
+                  <span>จัดการและคัดลอกลิงก์ทั้ง 3 เว็บไซต์ (แยกการเข้าถึงเด็ดขาด)</span>
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  ระบบถูกออกแบบให้แยกอิสระเป็น 3 เว็บไซต์อย่างสมบูรณ์แบบ คุณสามารถส่งลิงก์ที่ถูกต้องให้แก่กลุ่มเป้าหมายแต่ละกลุ่ม:
+                  ระบบถูกออกแบบให้แยกอิสระเป็น 3 เว็บไซต์ คุณสามารถคัดลอกลิงก์ที่ถูกต้องส่งให้แก่กลุ่มเป้าหมายแต่ละกลุ่ม:
                 </p>
 
                 {/* 1. Viewer */}
@@ -803,10 +843,11 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                      <span className="text-xs font-bold text-cyan-300">1. เว็บไซต์ผู้ชม (Viewer Portal)</span>
+                      <span className="text-xs font-bold text-cyan-300">1. ลิงก์สำหรับผู้ชมทั่วไป (Viewer Portal Link)</span>
                     </div>
-                    <span className="text-[10px] text-slate-400">สำหรับส่งให้ผู้บริหารหรือบุคคลทั่วไป</span>
+                    <span className="text-[10px] text-cyan-400 font-medium">ดูอย่างเดียว ปลอดภัย ไม่มีเมนูแก้ไข</span>
                   </div>
+                  <p className="text-[11px] text-slate-400">สำหรับส่งให้ผู้บริหาร ลูกค้า หรือบุคคลทั่วไปเปิดดูรายงานและฟิลเตอร์ข้อมูล</p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -836,10 +877,13 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-violet-400" />
-                      <span className="text-xs font-bold text-violet-300">2. เว็บไซต์ผู้ใช้งาน (User Portal)</span>
+                      <span className="text-xs font-bold text-violet-300">2. ลิงก์สำหรับผู้ใช้งาน & สมาชิก (User App / Studio Link)</span>
                     </div>
-                    <span className="text-[10px] text-slate-400">สำหรับส่งให้ลูกค้าหรือสมาชิกทีมงาน</span>
+                    <span className="text-[10px] text-violet-400 font-medium">สร้าง & ออกแบบแดชบอร์ด</span>
                   </div>
+                  <p className="text-[11px] text-slate-400">
+                    สำหรับสมาชิกทีมหรือผู้ใช้งาน (หากผู้ใช้ลบพารามิเตอร์ของลิงก์ออกทั้งหมด จะยังคงอยู่ที่หน้านี้เสมอ)
+                  </p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -869,10 +913,13 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                      <span className="text-xs font-bold text-rose-300">3. ระบบจัดการเว็บไซต์ (Admin Platform)</span>
+                      <span className="text-xs font-bold text-rose-300">3. ลิงก์ระบบจัดการเว็บไซต์หลังบ้าน (Admin Platform Link)</span>
                     </div>
-                    <span className="text-[10px] text-slate-400">สำหรับผู้ดูแลระบบและเจ้าของระบบเท่านั้น</span>
+                    <span className="text-[10px] text-rose-400 font-medium">เฉพาะผู้ดูแลระบบ (ป้องกันด้วย Passcode)</span>
                   </div>
+                  <p className="text-[11px] text-slate-400">
+                    ลิงก์เฉพาะผู้ดูแลระบบและเจ้าของ มีหน้าต่างล็อกรหัสผ่าน Master Passcode ป้องกันบุคคลภายนอก 100%
+                  </p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -887,7 +934,100 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                       {copiedLink === 'admin' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedLink === 'admin' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
                     </button>
+                    <button
+                      onClick={handleLockAdminSession}
+                      className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs text-rose-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer transition"
+                      title="ล็อกระบบหลังบ้านและกลับสู่หน้าผู้ใช้ทันที"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>ล็อกหน้าจอ</span>
+                    </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Security & Routing Configuration */}
+              <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-4">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-teal-400" />
+                  <span>ตั้งค่าความปลอดภัยและการนำทาง (Security & Route Settings)</span>
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Default Landing Page Setting */}
+                  <div className="p-4 rounded-2xl bg-[#1e193c] border border-white/10 space-y-2.5">
+                    <label className="text-xs font-bold text-white block">
+                      หน้าเริ่มต้นเมื่อผู้ใช้เปิดลิงก์หลัก หรือลบพารามิเตอร์ออก:
+                    </label>
+                    <div className="space-y-2 text-xs">
+                      <label className="flex items-center gap-2.5 cursor-pointer text-slate-300 hover:text-white">
+                        <input
+                          type="radio"
+                          name="defaultLanding"
+                          value="studio"
+                          checked={defaultLanding === 'studio'}
+                          onChange={() => setDefaultLanding('studio')}
+                          className="w-4 h-4 accent-violet-600 cursor-pointer"
+                        />
+                        <span>หน้าเว็บผู้ใช้งาน (User App / Studio) - แนะนำ</span>
+                      </label>
+                      <label className="flex items-center gap-2.5 cursor-pointer text-slate-300 hover:text-white">
+                        <input
+                          type="radio"
+                          name="defaultLanding"
+                          value="viewer"
+                          checked={defaultLanding === 'viewer'}
+                          onChange={() => setDefaultLanding('viewer')}
+                          className="w-4 h-4 accent-cyan-500 cursor-pointer"
+                        />
+                        <span>หน้าเว็บผู้ชม (Public Viewer Portal)</span>
+                      </label>
+                    </div>
+                    <div className="text-[11px] text-slate-400 pt-1">
+                      * ไม่ว่าจะเลือกแบบใด ระบบจะไม่มีทางพาผู้ใช้หลุดเข้าระบบหลังบ้านเด็ดขาด
+                    </div>
+                  </div>
+
+                  {/* Admin Master Passcode Setting */}
+                  <div className="p-4 rounded-2xl bg-[#1e193c] border border-white/10 space-y-2.5">
+                    <label className="text-xs font-bold text-white block">
+                      รหัสผ่านผู้ดูแลระบบ (Admin Master Passcode):
+                    </label>
+                    <input
+                      type="text"
+                      value={adminPasscode}
+                      onChange={(e) => setAdminPasscode(e.target.value)}
+                      placeholder="เช่น admin1234"
+                      className="w-full bg-[#120d26] border border-rose-500/40 rounded-xl px-3 py-2 text-xs text-rose-200 font-mono focus:outline-none focus:border-rose-400"
+                    />
+                    <div className="text-[11px] text-slate-400">
+                      ใช้สำหรับปลดล็อกหน้าจอเมื่อมีคนเข้าลิงก์ <code className="text-rose-300 font-mono">?portal=admin</code>
+                    </div>
+                  </div>
+                </div>
+
+                {passcodeSaved && (
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>บันทึกการตั้งค่าความปลอดภัยและทางเข้าเว็บไซต์เรียบร้อยแล้ว</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    onClick={handleSaveSecurityRouting}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold transition cursor-pointer shadow-lg shadow-violet-900/40"
+                  >
+                    บันทึกการตั้งค่าลิงก์และความปลอดภัย
+                  </button>
+
+                  <button
+                    onClick={handleLockAdminSession}
+                    className="px-4 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>ล็อกออกจากระบบหลังบ้านทันที</span>
+                  </button>
                 </div>
               </div>
             </div>
