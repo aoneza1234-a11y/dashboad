@@ -177,11 +177,37 @@ export default function App() {
     return 'studio';
   };
 
-  const checkIsTestRoute = (): boolean => {
+  // Domain and Route detection for isolating Production User Domain and QA Test Lab Domain
+  const SHARED_PROD_DOMAIN = 'ais-pre-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
+  const DEV_TEST_DOMAIN = 'ais-dev-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
+
+  const checkIsTestEnvironment = (): boolean => {
     if (typeof window === 'undefined') return false;
+    const host = window.location.hostname.toLowerCase();
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
+
+    // 1. If explicitly opened on Production User Domain -> NEVER show test features (Hard Production Mode)
+    if (host.includes('ais-pre-') || host.startsWith('app.') || host.startsWith('bi.')) {
+      // On production domain, only allow explicit test query param if intentionally forced
+      return params.get('mode') === 'test' || path === '/test';
+    }
+
+    // 2. If opened on Development / QA Sandbox Domain -> Default to Test Lab Mode
+    if (
+      host.includes('ais-dev-') ||
+      host.startsWith('test.') ||
+      host.startsWith('qa.') ||
+      host.startsWith('staging.') ||
+      host.includes('sandbox') ||
+      host.includes('localhost')
+    ) {
+      // In dev domain, default to test environment unless explicitly switched to clean
+      return params.get('clean') !== 'true' && path !== '/clean';
+    }
+
+    // 3. Fallback path & param checks
     return (
       params.get('mode') === 'test' ||
       params.get('mode') === 'demo' ||
@@ -197,27 +223,43 @@ export default function App() {
   };
 
   const [viewMode, setViewMode] = useState<'studio' | 'dev_console' | 'public_viewer'>(resolveCurrentViewMode);
-  const [isTestRoute, setIsTestRoute] = useState<boolean>(checkIsTestRoute);
+  const [isTestRoute, setIsTestRoute] = useState<boolean>(checkIsTestEnvironment);
 
   // Team Auth State & RBAC
   const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
-  // Route navigation between Clean User Portal (/) and QA Test Lab (/test)
+  // Domain & Route navigation between Clean User Portal (Shared App) and QA Test Lab (Dev App)
   const handleNavigateToTestPortal = () => {
-    try {
-      window.history.pushState({}, '', '/test');
-    } catch (e) {
-      window.location.search = '?mode=test';
+    if (typeof window !== 'undefined') {
+      const currentHost = window.location.hostname.toLowerCase();
+      // If currently on production domain, we can navigate directly to the Dev/QA domain
+      if (currentHost.includes('ais-pre-')) {
+        window.location.href = `https://${DEV_TEST_DOMAIN}`;
+        return;
+      }
+      try {
+        window.history.pushState({}, '', '/test');
+      } catch (e) {
+        window.location.search = '?mode=test';
+      }
     }
     setIsTestRoute(true);
     setViewMode('studio');
   };
 
   const handleNavigateToUserPortal = () => {
-    try {
-      window.history.pushState({}, '', '/');
-    } catch (e) {
-      window.location.search = '';
+    if (typeof window !== 'undefined') {
+      const currentHost = window.location.hostname.toLowerCase();
+      // If currently on dev domain, we can navigate directly to the Clean Production domain
+      if (currentHost.includes('ais-dev-')) {
+        window.location.href = `https://${SHARED_PROD_DOMAIN}`;
+        return;
+      }
+      try {
+        window.history.pushState({}, '', '/');
+      } catch (e) {
+        window.location.search = '';
+      }
     }
     setIsTestRoute(false);
     setViewMode('studio');
@@ -234,7 +276,7 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       setViewMode(resolveCurrentViewMode());
-      setIsTestRoute(checkIsTestRoute());
+      setIsTestRoute(checkIsTestEnvironment());
     };
 
     const handleSessionUpdate = () => {

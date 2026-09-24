@@ -53,14 +53,14 @@ export const TestLabBar: React.FC<TestLabBarProps> = ({
         <div className="flex items-center gap-2.5">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold shadow-xs">
             <FlaskConical className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span className="font-mono">เส้นทาง: /test</span>
+            <span className="font-mono">QA Sandbox Domain</span>
             <span className="text-[10px] bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded font-bold uppercase">
-              QA Lab
+              Dev / Test
             </span>
           </div>
           <div className="hidden sm:block">
             <div className="font-semibold text-white flex items-center gap-1.5">
-              <span>ห้องทดสอบมุมมองผู้ใช้ (Multi-User Simulation Lab)</span>
+              <span>ห้องทดสอบมุมมองผู้ใช้ (Sandbox Domain)</span>
             </div>
             <p className="text-[10px] text-amber-200/80">
               {isAdmin
@@ -152,10 +152,10 @@ export const TestLabBar: React.FC<TestLabBarProps> = ({
             id="btn-goto-user-portal"
             onClick={onNavigateToUserPortal}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition transform active:scale-95 cursor-pointer"
-            title="สลับไปยังเส้นทางเว็บผู้ใช้งานจริง (Production: /) - ไม่มีปุ่มทดสอบหรือเดโมแสดงผล"
+            title="สลับไปยังโดเมนผู้ใช้งานจริง (Production Domain) - สะอาดตา ไม่มีปุ่มหรือเครื่องมือเทสใดๆ ทั้งสิ้น"
           >
-            <span>ไปยังเว็บผู้ใช้งานจริง (Clean Portal)</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <span>เปิดโดเมนผู้ใช้งานจริง (Prod Domain)</span>
+            <ExternalLink className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
