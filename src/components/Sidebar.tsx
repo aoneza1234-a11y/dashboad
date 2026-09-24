@@ -25,6 +25,8 @@ import {
   User,
   ExternalLink,
   Shield,
+  FlaskConical,
+  Globe,
 } from 'lucide-react';
 import { VisualWidget, SheetConnectionConfig, TeamUser } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
@@ -60,6 +62,9 @@ interface SidebarProps {
   onOpenAuthModal?: () => void;
   onLogout?: () => void;
   onOpenDataSourceStorage?: () => void;
+  isTestRoute?: boolean;
+  onNavigateToTestPortal?: () => void;
+  onNavigateToUserPortal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -93,6 +98,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAuthModal,
   onLogout,
   onOpenDataSourceStorage,
+  isTestRoute = false,
+  onNavigateToTestPortal,
+  onNavigateToUserPortal,
 }) => {
   const sidebarBg = themeStyles ? themeStyles.sidebarBg : '#141224';
   const sidebarBorder = themeStyles ? themeStyles.sidebarBorder : '#262244';
@@ -478,6 +486,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           );
         })()}
+
+        {/* Route Switcher: Switch between clean User Portal (/) and QA Test Lab (/test) */}
+        {isTestRoute ? (
+          onNavigateToUserPortal && (
+            <button
+              id="btn-sidebar-switch-to-user"
+              onClick={onNavigateToUserPortal}
+              className="w-full mt-1.5 py-1.5 px-2.5 rounded-lg bg-blue-950/70 hover:bg-blue-900 border border-blue-500/40 text-blue-200 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+              title="สลับไปยังเส้นทางเว็บผู้ใช้งานจริง (Production: /) - สะอาดตา ไม่มีเครื่องมือเทส"
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              <span>ไปยังเว็บผู้ใช้งานจริง (Clean /)</span>
+            </button>
+          )
+        ) : (
+          onNavigateToTestPortal && (
+            <button
+              id="btn-sidebar-switch-to-test"
+              onClick={onNavigateToTestPortal}
+              className="w-full mt-1.5 py-1 px-2 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/20 text-purple-300/80 hover:text-purple-200 text-[10px] flex items-center justify-center gap-1.5 transition cursor-pointer"
+              title="สลับไปยังเส้นทางทดสอบระบบสำหรับผู้ทดสอบ (/test) เพื่อสลับ Persona และทดสอบจำลอง"
+            >
+              <FlaskConical className="w-3 h-3 text-purple-400" />
+              <span>ห้องทดสอบระบบ (/test)</span>
+            </button>
+          )
+        )}
       </div>
     </aside>
   );

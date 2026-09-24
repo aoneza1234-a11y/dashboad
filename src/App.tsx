@@ -26,6 +26,7 @@ import { UserPublishModal } from './components/UserPublishModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { UserNotificationsModal } from './components/UserNotificationsModal';
 import { DataSourceModal } from './components/DataSourceModal';
+import { TestLabBar } from './components/TestLabBar';
 import { getThemeStyles } from './utils/themeStyles';
 import { getSiteStatus, SiteStatus, toggleSiteOnline, isAdminAuthenticatedSession, logoutAdminSession } from './services/siteStatusStore';
 import { Lock } from 'lucide-react';
@@ -41,7 +42,7 @@ import {
   TeamUser,
   DashboardTemplate,
 } from './types';
-import { getCurrentUser, logoutTeamUser } from './services/teamAuthStore';
+import { getCurrentUser, logoutTeamUser, loginTeamUserAsync } from './services/teamAuthStore';
 import {
   saveUserDashboard,
   loadUserDashboardFromCloud,
@@ -176,15 +177,64 @@ export default function App() {
     return 'studio';
   };
 
+  const checkIsTestRoute = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
+    return (
+      params.get('mode') === 'test' ||
+      params.get('mode') === 'demo' ||
+      params.get('portal') === 'test' ||
+      params.get('portal') === 'demo' ||
+      path === '/test' ||
+      path.startsWith('/test/') ||
+      path === '/demo' ||
+      path.startsWith('/demo/') ||
+      hash.includes('test') ||
+      hash.includes('demo')
+    );
+  };
+
   const [viewMode, setViewMode] = useState<'studio' | 'dev_console' | 'public_viewer'>(resolveCurrentViewMode);
+  const [isTestRoute, setIsTestRoute] = useState<boolean>(checkIsTestRoute);
 
   // Team Auth State & RBAC
   const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
-  // Sync URL changes with viewMode
+  // Route navigation between Clean User Portal (/) and QA Test Lab (/test)
+  const handleNavigateToTestPortal = () => {
+    try {
+      window.history.pushState({}, '', '/test');
+    } catch (e) {
+      window.location.search = '?mode=test';
+    }
+    setIsTestRoute(true);
+    setViewMode('studio');
+  };
+
+  const handleNavigateToUserPortal = () => {
+    try {
+      window.history.pushState({}, '', '/');
+    } catch (e) {
+      window.location.search = '';
+    }
+    setIsTestRoute(false);
+    setViewMode('studio');
+  };
+
+  const handleTestQuickSwitchUser = async (email: string) => {
+    const res = await loginTeamUserAsync(email, 'password123');
+    if (res.success && res.user) {
+      setCurrentTeamUser(res.user);
+    }
+  };
+
+  // Sync URL changes with viewMode and test route
   useEffect(() => {
     const handlePopState = () => {
       setViewMode(resolveCurrentViewMode());
+      setIsTestRoute(checkIsTestRoute());
     };
 
     const handleSessionUpdate = () => {
@@ -1024,10 +1074,25 @@ export default function App() {
         onOpenMyDashboards={() => setIsMyDashboardsOpen(true)}
         onOpenDataSourceStorage={() => setIsDataSourceModalOpen(true)}
         themeStyles={themeStyles}
+        isTestRoute={isTestRoute}
+        onNavigateToTestPortal={handleNavigateToTestPortal}
+        onNavigateToUserPortal={handleNavigateToUserPortal}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* QA Test Lab Banner & Persona Controller - Strictly shown ONLY on /test route */}
+        {isTestRoute && (
+          <TestLabBar
+            currentUser={currentTeamUser}
+            onSwitchUser={handleTestQuickSwitchUser}
+            onLogout={handleTeamLogout}
+            onNavigateToUserPortal={handleNavigateToUserPortal}
+            recordCount={salesData.length}
+            widgetCount={widgets.length}
+          />
+        )}
+
         {/* Central Announcement Banner from Admin CMS */}
         {siteStatus.cmsSettings?.bannerEnabled && siteStatus.cmsSettings?.bannerMessage && (
           <div
@@ -1285,7 +1350,8 @@ export default function App() {
       <AuthModal
         isOpen={isAuthModalOpen || !currentTeamUser}
         forceAuth={!currentTeamUser}
-        initialMode="register"
+        initialMode="login"
+        isTestMode={isTestRoute}
         onClose={() => {
           if (currentTeamUser) {
             setIsAuthModalOpen(false);
