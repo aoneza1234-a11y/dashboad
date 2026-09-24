@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard,
+  HardDrive,
   Database,
   Grid,
   Sparkles,
@@ -58,6 +59,7 @@ interface SidebarProps {
   onOpenTemplatesModal?: () => void;
   onOpenAuthModal?: () => void;
   onLogout?: () => void;
+  onOpenDataSourceStorage?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -90,6 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTemplatesModal,
   onOpenAuthModal,
   onLogout,
+  onOpenDataSourceStorage,
 }) => {
   const sidebarBg = themeStyles ? themeStyles.sidebarBg : '#141224';
   const sidebarBorder = themeStyles ? themeStyles.sidebarBorder : '#262244';
@@ -164,6 +167,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <span className="bg-[#2a244d] text-violet-300 px-2 py-0.5 rounded-full text-[11px] font-bold">
             {recordCount}
+          </span>
+        </button>
+
+        <button
+          id="nav-datasource-storage"
+          onClick={() => {
+            setActiveNav('datasource');
+            if (onOpenDataSourceStorage) onOpenDataSourceStorage();
+          }}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-md transition cursor-pointer ${
+            activeNav === 'datasource'
+              ? 'bg-[#231e40] text-white font-semibold'
+              : 'hover:bg-[#1c1833] text-slate-300'
+          }`}
+          title="คลัง Data Source จัดเก็บและสลับไฟล์ Excel/CSV บนคลาวด์ ไม่ต้องอัปโหลดซ้ำ"
+        >
+          <div className="flex items-center gap-2.5">
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>คลัง Data Source</span>
+          </div>
+          <span className="text-[10px] text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded font-mono">
+            Storage
           </span>
         </button>
 

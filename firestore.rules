@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default rule
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /dashboards/{dashboardId} {
+      allow read, write: if true;
+    }
+
+    match /dataSources/{dataSourceId} {
+      allow read, write: if true;
+    }
+
+    match /userSessions/{sessionId} {
+      allow read, write: if true;
+    }
+  }
+}

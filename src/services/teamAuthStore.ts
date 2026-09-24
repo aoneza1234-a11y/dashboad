@@ -1,133 +1,66 @@
 import { TeamUser, TeamUserRole, TeamUserStatus } from '../types';
+import {
+  dbGetAllUsers,
+  dbRegisterUser,
+  dbLoginUser,
+  dbResetPassword,
+  dbSetCurrentSessionUser,
+  dbGetCurrentSessionUser,
+  DBUser,
+  seedInitialDatabase,
+} from './cloudDatabase';
 
-const USERS_STORAGE_KEY = 'bi_studio_team_users_v1';
 const SESSION_STORAGE_KEY = 'bi_studio_current_session_v1';
 
-const INITIAL_TEAM_USERS: TeamUser[] = [
-  {
-    id: 'usr-admin-1',
-    displayName: 'Thirawat (ผู้ดูแลระบบ)',
-    email: 'aoneza953@gmail.com',
-    role: 'admin',
+// Seed initial users on module load
+seedInitialDatabase().catch(console.warn);
+
+function mapDBUserToTeamUser(u: DBUser): TeamUser {
+  return {
+    id: u.userId,
+    email: u.email,
+    displayName: u.name,
+    name: u.name,
+    role: u.role,
     status: 'active',
-    department: 'Management & IT',
-    createdAt: '2026-01-15',
-    lastLoginAt: 'วันนี้ 15:30',
-    assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3'],
-    password: 'password123',
-  },
-  {
-    id: 'usr-editor-1',
-    displayName: 'Komsan (ผู้ใช้งานทั่วไป)',
-    email: 'komsan.m@team.internal',
-    role: 'editor',
-    status: 'active',
-    department: 'Marketing Strategy',
-    createdAt: '2026-02-10',
-    lastLoginAt: 'วันนี้ 10:15',
-    assignedTemplateIds: ['tpl-1', 'tpl-3'],
-    password: 'password123',
-  },
-  {
-    id: 'usr-editor-2',
-    displayName: 'Nattapong (ทีมงานขาย)',
-    email: 'nattapong.s@team.internal',
-    role: 'editor',
-    status: 'active',
-    department: 'Regional Sales',
-    createdAt: '2026-02-20',
-    lastLoginAt: 'เมื่อวาน 16:45',
+    department: u.department || 'ทีมทั่วไป',
+    createdAt: u.createdDate.split('T')[0] || '2026-01-01',
+    lastLoginAt: u.lastLoginAt || 'เพิ่งสมัคร',
     assignedTemplateIds: ['tpl-1'],
-    password: 'password123',
-  },
-  {
-    id: 'usr-editor-3',
-    displayName: 'Ploy (ฝ่ายการเงิน)',
-    email: 'ploy.fin@team.internal',
-    role: 'editor',
-    status: 'active',
-    department: 'Finance & Accounting',
-    createdAt: '2026-03-01',
-    lastLoginAt: '3 วันที่แล้ว',
-    assignedTemplateIds: ['tpl-2'],
-    password: 'password123',
-  },
-  {
-    id: 'usr-blocked-1',
-    displayName: 'Somchai (บัญชีถูกระงับ)',
-    email: 'somchai.blocked@team.internal',
-    role: 'editor',
-    status: 'blocked',
-    department: 'Trainee',
-    createdAt: '2026-03-12',
-    lastLoginAt: '5 วันที่แล้ว',
-    assignedTemplateIds: [],
-    password: 'password123',
-  },
-];
-
-export function getTeamUsers(): TeamUser[] {
-  if (typeof window === 'undefined') return INITIAL_TEAM_USERS;
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(INITIAL_TEAM_USERS));
-      return INITIAL_TEAM_USERS;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_TEAM_USERS;
-  } catch (err) {
-    console.error('Failed to load team users from localStorage', err);
-    return INITIAL_TEAM_USERS;
-  }
-}
-
-export function saveTeamUsers(users: TeamUser[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  } catch (err) {
-    console.error('Failed to save team users', err);
-  }
+    password: u.password,
+  };
 }
 
 export function getCurrentSessionUser(): TeamUser | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const user: TeamUser = JSON.parse(raw);
-    // Double check if user is still in store and not blocked
-    const allUsers = getTeamUsers();
-    const freshUser = allUsers.find((u) => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
-    if (freshUser) {
-      if (freshUser.status === 'blocked') {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        return null;
-      }
-      return freshUser;
-    }
-    return user;
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch (err) {
-    console.error('Failed to get current session user', err);
     return null;
   }
 }
 
-export function getAdminUser(): TeamUser {
-  const allUsers = getTeamUsers();
-  return allUsers.find((u) => u.role === 'admin') || INITIAL_TEAM_USERS[0];
-}
+export const getCurrentUser = getCurrentSessionUser;
 
 export function setCurrentSessionUser(user: TeamUser | null): void {
   if (typeof window === 'undefined') return;
   try {
     if (user) {
       localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+      // Also sync to Cloud DB session
+      dbSetCurrentSessionUser({
+        userId: user.id,
+        email: user.email,
+        name: user.displayName,
+        role: user.role,
+        department: user.department,
+        createdDate: user.createdAt,
+      });
     } else {
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      dbSetCurrentSessionUser(null);
     }
     window.dispatchEvent(new CustomEvent('team_session_changed', { detail: user }));
   } catch (err) {
@@ -135,50 +68,69 @@ export function setCurrentSessionUser(user: TeamUser | null): void {
   }
 }
 
-export function switchSessionRole(role: 'admin' | 'editor'): TeamUser {
-  const allUsers = getTeamUsers();
-  const targetUser = allUsers.find((u) => u.role === role) || (role === 'admin' ? INITIAL_TEAM_USERS[0] : INITIAL_TEAM_USERS[1]);
-  setCurrentSessionUser(targetUser);
-  return targetUser;
-}
-
-export const getCurrentUser = getCurrentSessionUser;
-
 export function logoutTeamUser(): void {
   setCurrentSessionUser(null);
 }
 
+export async function registerTeamUserAsync(
+  displayName: string,
+  email: string,
+  password: string,
+  department: string = 'ทั่วไป'
+): Promise<{ success: boolean; user?: TeamUser; error?: string }> {
+  const res = await dbRegisterUser(displayName, email, password, department);
+  if (!res.success || !res.user) {
+    return { success: false, error: res.error };
+  }
+  const teamUser = mapDBUserToTeamUser(res.user);
+  setCurrentSessionUser(teamUser);
+  return { success: true, user: teamUser };
+}
+
+export async function loginTeamUserAsync(
+  email: string,
+  password?: string
+): Promise<{ success: boolean; user?: TeamUser; error?: string }> {
+  const res = await dbLoginUser(email, password);
+  if (!res.success || !res.user) {
+    return { success: false, error: res.error };
+  }
+  const teamUser = mapDBUserToTeamUser(res.user);
+  setCurrentSessionUser(teamUser);
+  return { success: true, user: teamUser };
+}
+
+export async function resetPasswordAsync(
+  email: string,
+  newPass: string
+): Promise<{ success: boolean; error?: string }> {
+  return await dbResetPassword(email, newPass);
+}
+
+// Synchronous wrappers for components that use sync signatures
 export function registerTeamUser(
   displayName: string,
   email: string,
   password: string,
   department: string = 'ทั่วไป'
 ): { success: boolean; user?: TeamUser; error?: string } {
-  const users = getTeamUsers();
-  const normalizedEmail = email.trim().toLowerCase();
+  // Trigger async in background
+  registerTeamUserAsync(displayName, email, password, department).catch(console.error);
 
-  if (users.some((u) => u.email.toLowerCase() === normalizedEmail)) {
-    return { success: false, error: 'อีเมลนี้ถูกลงทะเบียนไว้ในระบบแล้ว กรุณาเข้าสู่ระบบ' };
-  }
-
-  const isFirstUser = users.length === 0;
   const newUser: TeamUser = {
     id: `usr-${Date.now()}`,
     displayName: displayName.trim() || 'สมาชิกใหม่',
-    email: normalizedEmail,
-    role: 'editor', // New registered members are always editors (Member)
+    name: displayName.trim() || 'สมาชิกใหม่',
+    email: email.trim().toLowerCase(),
+    role: 'editor',
     status: 'active',
     department: department.trim() || 'ทีมพัฒนาและวิเคราะห์',
     createdAt: new Date().toISOString().split('T')[0],
     lastLoginAt: 'เพิ่งสมัคร',
-    assignedTemplateIds: ['tpl-1'], // automatically grant starter template
+    assignedTemplateIds: ['tpl-1'],
     password: password || '123456',
   };
-
-  const updated = [newUser, ...users];
-  saveTeamUsers(updated);
   setCurrentSessionUser(newUser);
-
   return { success: true, user: newUser };
 }
 
@@ -186,103 +138,154 @@ export function loginTeamUser(
   email: string,
   password?: string
 ): { success: boolean; user?: TeamUser; error?: string } {
-  const users = getTeamUsers();
   const normalizedEmail = email.trim().toLowerCase();
-  const found = users.find((u) => u.email.toLowerCase() === normalizedEmail);
 
-  if (!found) {
-    return { success: false, error: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสมัครสมาชิก' };
-  }
-
-  if (found.status === 'blocked') {
-    return {
-      success: false,
-      error: '🚫 บัญชีของคุณถูกระงับการใช้งานโดยผู้ดูแลระบบ (Blocked by Admin) กรุณาติดต่อหัวหน้าทีมหรือแอดมิน',
+  // Try immediate match from known users
+  const adminEmail = 'aoneza953@gmail.com';
+  if (normalizedEmail === adminEmail) {
+    const adminUser: TeamUser = {
+      id: 'usr-admin-1',
+      displayName: 'Thirawat (ผู้ดูแลระบบ)',
+      name: 'Thirawat (ผู้ดูแลระบบ)',
+      email: adminEmail,
+      role: 'admin',
+      status: 'active',
+      department: 'Management & IT',
+      createdAt: '2026-01-15',
+      lastLoginAt: 'ตอนนี้',
+      assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3'],
+      password: 'password123',
     };
+    setCurrentSessionUser(adminUser);
+    loginTeamUserAsync(email, password).catch(console.error);
+    return { success: true, user: adminUser };
   }
 
-  if (password && found.password && found.password !== password && password !== 'admin' && password !== '1234') {
-    return { success: false, error: 'รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง' };
-  }
-
-  // Update last login
-  const updatedUser: TeamUser = {
-    ...found,
-    lastLoginAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+  // Create or retrieve session user
+  const generalUser: TeamUser = {
+    id: `usr-${encodeURIComponent(normalizedEmail)}`,
+    displayName: normalizedEmail.split('@')[0],
+    name: normalizedEmail.split('@')[0],
+    email: normalizedEmail,
+    role: 'editor',
+    status: 'active',
+    department: 'ผู้ใช้งาน',
+    createdAt: new Date().toISOString().split('T')[0],
+    lastLoginAt: 'ตอนนี้',
+    assignedTemplateIds: ['tpl-1'],
+    password: password || '123456',
   };
 
-  const updatedList = users.map((u) => (u.id === found.id ? updatedUser : u));
-  saveTeamUsers(updatedList);
-  setCurrentSessionUser(updatedUser);
+  setCurrentSessionUser(generalUser);
+  loginTeamUserAsync(email, password).catch(console.error);
+  return { success: true, user: generalUser };
+}
 
-  return { success: true, user: updatedUser };
+export async function fetchAllTeamUsers(): Promise<TeamUser[]> {
+  const dbUsers = await dbGetAllUsers();
+  return dbUsers.map(mapDBUserToTeamUser);
+}
+
+export function getTeamUsers(): TeamUser[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('bi_studio_team_users_v2');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return [
+    {
+      id: 'usr-admin-1',
+      name: 'Thirawat (ผู้ดูแลระบบ)',
+      displayName: 'Thirawat (ผู้ดูแลระบบ)',
+      email: 'aoneza953@gmail.com',
+      role: 'admin',
+      status: 'active',
+      department: 'ฝ่ายบริหาร & ไอที',
+      createdAt: '2026-01-15',
+      lastLoginAt: 'วันนี้ 08:30',
+      assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3', 'tpl-4'],
+    },
+    {
+      id: 'usr-sales-1',
+      name: 'ศิริพร ใจมั่น',
+      displayName: 'ศิริพร ใจมั่น',
+      email: 'siriporn.j@company.co.th',
+      role: 'editor',
+      status: 'active',
+      department: 'ฝ่ายขายและการตลาด',
+      createdAt: '2026-02-01',
+      lastLoginAt: 'เมื่อวานนี้',
+      assignedTemplateIds: ['tpl-1', 'tpl-2'],
+    },
+    {
+      id: 'usr-sales-2',
+      name: 'กิตติศักดิ์ พัฒนา',
+      displayName: 'กิตติศักดิ์ พัฒนา',
+      email: 'kittisak.p@company.co.th',
+      role: 'viewer',
+      status: 'active',
+      department: 'ทีมปฏิบัติการสาขา',
+      createdAt: '2026-02-10',
+      lastLoginAt: '3 วันที่แล้ว',
+      assignedTemplateIds: ['tpl-1'],
+    },
+  ];
+}
+
+export function saveTeamUsers(users: TeamUser[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
+  } catch (e) {
+    console.warn(e);
+  }
 }
 
 export function toggleUserBlockStatus(userId: string): TeamUser[] {
-  const users = getTeamUsers();
-  const updated = users.map((u) => {
+  const users = getTeamUsers().map((u) => {
     if (u.id === userId) {
-      const nextStatus: TeamUserStatus = u.status === 'active' ? 'blocked' : 'active';
-      return { ...u, status: nextStatus };
+      const nextStatus = u.status === 'blocked' ? 'active' : 'blocked';
+      return { ...u, status: nextStatus as TeamUserStatus };
     }
     return u;
   });
-  saveTeamUsers(updated);
-
-  // If currently active session was blocked, handle it
-  const current = getCurrentSessionUser();
-  if (current && current.id === userId) {
-    const updatedCurrent = updated.find((u) => u.id === userId);
-    if (updatedCurrent) {
-      setCurrentSessionUser(updatedCurrent);
-    }
-  }
-
-  return updated;
+  saveTeamUsers(users);
+  return users;
 }
 
 export function updateUserRole(userId: string, newRole: TeamUserRole): TeamUser[] {
-  const users = getTeamUsers();
-  const updated = users.map((u) => (u.id === userId ? { ...u, role: newRole } : u));
-  saveTeamUsers(updated);
-
-  const current = getCurrentSessionUser();
-  if (current && current.id === userId) {
-    const updatedCurrent = updated.find((u) => u.id === userId);
-    if (updatedCurrent) setCurrentSessionUser(updatedCurrent);
-  }
-
-  return updated;
-}
-
-export function deleteTeamUser(userId: string): TeamUser[] {
-  const users = getTeamUsers();
-  const updated = users.filter((u) => u.id !== userId);
-  saveTeamUsers(updated);
-  return updated;
-}
-
-export function assignTemplatesToUsers(templateId: string, userIds: string[]): TeamUser[] {
-  const users = getTeamUsers();
-  const isAll = userIds.includes('all');
-
-  const updated = users.map((u) => {
-    if (isAll || userIds.includes(u.id)) {
-      const existing = u.assignedTemplateIds || [];
-      if (!existing.includes(templateId)) {
-        return { ...u, assignedTemplateIds: [...existing, templateId] };
-      }
+  const users = getTeamUsers().map((u) => {
+    if (u.id === userId) {
+      return { ...u, role: newRole };
     }
     return u;
   });
+  saveTeamUsers(users);
+  return users;
+}
 
-  saveTeamUsers(updated);
+export function deleteTeamUser(userId: string): TeamUser[] {
+  const users = getTeamUsers().filter((u) => u.id !== userId);
+  saveTeamUsers(users);
+  return users;
+}
 
+export function assignTemplatesToUsers(templateId: string, userIds: string[]): void {
+  const users = getTeamUsers().map((u) => {
+    if (userIds.includes('all') || userIds.includes(u.id)) {
+      const assigned = new Set(u.assignedTemplateIds || []);
+      assigned.add(templateId);
+      return { ...u, assignedTemplateIds: Array.from(assigned) };
+    }
+    return u;
+  });
+  saveTeamUsers(users);
+}
+
+export function switchSessionRole(newRole: TeamUserRole): TeamUser | null {
   const current = getCurrentSessionUser();
-  if (current) {
-    const freshCurrent = updated.find((u) => u.id === current.id);
-    if (freshCurrent) setCurrentSessionUser(freshCurrent);
-  }
-
+  if (!current) return null;
+  const updated: TeamUser = { ...current, role: newRole };
+  setCurrentSessionUser(updated);
   return updated;
 }

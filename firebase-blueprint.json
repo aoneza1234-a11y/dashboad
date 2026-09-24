@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and account information",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier for the user"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the user"
+        },
+        "password": {
+          "type": "string",
+          "description": "Hashed or secret credential"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "editor", "viewer"],
+          "description": "Access control role"
+        },
+        "department": {
+          "type": "string",
+          "description": "Department or team name"
+        },
+        "createdDate": {
+          "type": "string",
+          "description": "ISO timestamp of account creation"
+        }
+      },
+      "required": ["userId", "email", "name", "createdDate"]
+    },
+    "Dashboard": {
+      "title": "Dashboard",
+      "description": "User dashboard project and layout configuration",
+      "type": "object",
+      "properties": {
+        "dashboardId": {
+          "type": "string",
+          "description": "Unique identifier of the dashboard"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "dashboardName": {
+          "type": "string",
+          "description": "Title of the dashboard"
+        },
+        "dashboardConfig": {
+          "type": "object",
+          "description": "Serialized layout, widgets, theme, and data mappings"
+        },
+        "createdDate": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedDate": {
+          "type": "string",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["dashboardId", "userId", "dashboardName", "createdDate", "updatedDate"]
+    },
+    "DataSource": {
+      "title": "DataSource",
+      "description": "Saved dataset or spreadsheet uploaded by the user",
+      "type": "object",
+      "properties": {
+        "dataSourceId": {
+          "type": "string",
+          "description": "Unique identifier of the data source"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "fileName": {
+          "type": "string",
+          "description": "Original file name of Excel or CSV"
+        },
+        "filePath": {
+          "type": "string",
+          "description": "Storage path or reference"
+        },
+        "recordCount": {
+          "type": "number",
+          "description": "Number of rows in the dataset"
+        },
+        "uploadDate": {
+          "type": "string",
+          "description": "Upload timestamp"
+        }
+      },
+      "required": ["dataSourceId", "userId", "fileName", "uploadDate"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account documents keyed by userId"
+    },
+    "/dashboards/{dashboardId}": {
+      "schema": "Dashboard",
+      "description": "Dashboard projects keyed by dashboardId"
+    },
+    "/dataSources/{dataSourceId}": {
+      "schema": "DataSource",
+      "description": "Uploaded datasets keyed by dataSourceId"
+    }
+  }
+}

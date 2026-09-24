@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   X,
   Plus,
@@ -14,9 +14,11 @@ import {
   RefreshCw,
   ExternalLink,
   Database,
+  Upload,
 } from 'lucide-react';
 import { SalesRecord, SheetConnectionConfig } from '../types';
 import { INITIAL_SALES_RECORDS } from '../data/sampleData';
+import { parseExcelOrCsvFile } from '../utils/fileParser';
 
 interface DataEditorModalProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ interface DataEditorModalProps {
   isSyncing?: boolean;
   onOpenConnectSheet?: () => void;
   connectionConfig?: SheetConnectionConfig;
+  onOpenDataSourceStorage?: () => void;
 }
 
 export const DataEditorModal: React.FC<DataEditorModalProps> = ({
@@ -40,12 +43,15 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   isSyncing = false,
   onOpenConnectSheet,
   connectionConfig,
+  onOpenDataSourceStorage,
 }) => {
   const [records, setRecords] = useState<any[]>(salesData);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newColumnName, setNewColumnName] = useState('');
   const [showAddColumn, setShowAddColumn] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state when opened or salesData changes externally
   React.useEffect(() => {
@@ -162,6 +168,23 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   const handleResetToDefault = () => {
     if (confirm('คุณต้องการรีเซ็ตข้อมูลเป็นชุดข้อมูลเริ่มต้น 20 แถวหรือไม่?')) {
       setRecords(INITIAL_SALES_RECORDS);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseExcelOrCsvFile(file);
+      if (parsed.records.length > 0) {
+        setRecords(parsed.records);
+        setImportMessage(`นำเข้าไฟล์ "${file.name}" เรียบร้อยแล้ว (${parsed.totalRows} แถว)`);
+        setTimeout(() => setImportMessage(null), 3500);
+      }
+    } catch (err: any) {
+      alert(`ไม่สามารถอ่านไฟล์ได้: ${err?.message || ''}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -344,6 +367,34 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
               <span>คืนค่าเริ่มต้น</span>
             </button>
 
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx, .xls, .csv"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="file-upload-dataeditor"
+            />
+            <label
+              htmlFor="file-upload-dataeditor"
+              className="px-3 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-300 font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="นำเข้าไฟล์ Excel (.xlsx, .xls) หรือ CSV เข้าสู่ตารางทันที"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>นำเข้า Excel / CSV</span>
+            </label>
+
+            {onOpenDataSourceStorage && (
+              <button
+                onClick={onOpenDataSourceStorage}
+                className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="เปิดคลัง Data Source Storage บันทึกหรือเลือกชุดข้อมูลเดิม"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>คลัง Data Source</span>
+              </button>
+            )}
+
             {/* Quick add column input box */}
             {showAddColumn && (
               <div className="flex items-center gap-1.5 bg-violet-50 p-1 rounded-lg border border-violet-200 animate-in fade-in">
@@ -392,6 +443,13 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
             </button>
           </div>
         </div>
+
+        {importMessage && (
+          <div className="mx-4 mt-3 px-4 py-2 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>{importMessage}</span>
+          </div>
+        )}
 
         {/* Dynamic Table Grid */}
         <div className="flex-1 overflow-auto p-4 bg-slate-100/60">

@@ -25,6 +25,7 @@ import { AssignedTemplatesModal } from './components/AssignedTemplatesModal';
 import { UserPublishModal } from './components/UserPublishModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { UserNotificationsModal } from './components/UserNotificationsModal';
+import { DataSourceModal } from './components/DataSourceModal';
 import { getThemeStyles } from './utils/themeStyles';
 import { getSiteStatus, SiteStatus, toggleSiteOnline, isAdminAuthenticatedSession, logoutAdminSession } from './services/siteStatusStore';
 import { Lock } from 'lucide-react';
@@ -41,6 +42,11 @@ import {
   DashboardTemplate,
 } from './types';
 import { getCurrentUser, logoutTeamUser } from './services/teamAuthStore';
+import {
+  saveUserDashboard,
+  loadUserDashboardFromCloud,
+  clearUserDashboardSession,
+} from './services/userDashboardStore';
 import { applyGlobalFilters } from './utils/calcEngine';
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from './data/sampleData';
 import {
@@ -220,46 +226,6 @@ export default function App() {
   });
   const [spacingMode, setSpacingMode] = useState<string>('ปกติ');
 
-  // Modals
-  const [isDataEditorOpen, setIsDataEditorOpen] = useState(false);
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [isGettingStartedOpen, setIsGettingStartedOpen] = useState(false);
-  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
-  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
-  const [isMyDashboardsOpen, setIsMyDashboardsOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isAssignedTemplatesOpen, setIsAssignedTemplatesOpen] = useState(false);
-  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
-
-  const handleTeamLogout = () => {
-    logoutTeamUser();
-    setCurrentTeamUser(null);
-    if (viewMode === 'dev_console') {
-      setViewMode('studio');
-    }
-  };
-
-  const handleAdoptTemplate = (template: DashboardTemplate) => {
-    setWidgets(template.widgets);
-    if (template.salesData && template.salesData.length > 0) {
-      setSalesData(template.salesData);
-    }
-    if (template.themePreset) {
-      setThemeConfig((prev) => ({ ...prev, preset: template.themePreset }));
-    }
-    setDashboardTitle(template.title);
-    setSelectedWidgetId(template.widgets[0]?.id || '');
-    setIsAssignedTemplatesOpen(false);
-  };
-
-  // Compute Active Theme Palettes & Styles
-  const themeStyles = useMemo(
-    () => getThemeStyles(themeConfig.preset),
-    [themeConfig.preset]
-  );
-
   // Connection & Sync
   const [isSyncing, setIsSyncing] = useState(false);
   const [connectionConfig, setConnectionConfig] = useState<SheetConnectionConfig>(() => {
@@ -309,6 +275,149 @@ export default function App() {
       }
     }
   }, [connectionConfig]);
+
+  // Modals
+  const [isDataEditorOpen, setIsDataEditorOpen] = useState(false);
+  const [isDataSourceModalOpen, setIsDataSourceModalOpen] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isGettingStartedOpen, setIsGettingStartedOpen] = useState(false);
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+  const [isMyDashboardsOpen, setIsMyDashboardsOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAssignedTemplatesOpen, setIsAssignedTemplatesOpen] = useState(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string>('');
+
+  const handleTeamLogout = () => {
+    logoutTeamUser();
+    clearUserDashboardSession();
+    setCurrentTeamUser(null);
+    if (viewMode === 'dev_console') {
+      setViewMode('studio');
+    }
+  };
+
+  // Perform save to Cloud Database with full configuration (Requirement 4)
+  const performSave = React.useCallback(
+    async (isAuto = false) => {
+      if (!currentTeamUser?.id) return;
+      try {
+        const timeStr = new Date().toLocaleTimeString('th-TH');
+        await saveUserDashboard(currentTeamUser.id, {
+          widgets,
+          salesData,
+          dashboardTitle,
+          themeConfig,
+          filterState,
+          connectionConfig,
+          spacingMode,
+        });
+        setIsSaved(true);
+        setLastSavedTime(timeStr);
+      } catch (err) {
+        console.warn('Save failed:', err);
+      }
+    },
+    [
+      currentTeamUser?.id,
+      widgets,
+      salesData,
+      dashboardTitle,
+      themeConfig,
+      filterState,
+      connectionConfig,
+      spacingMode,
+    ]
+  );
+
+  // Requirement 3 & 9: Auto-load user's dashboard when logging in or refreshing page
+  useEffect(() => {
+    let isMounted = true;
+    if (currentTeamUser?.id) {
+      loadUserDashboardFromCloud(currentTeamUser.id).then((saved) => {
+        if (!isMounted || !saved) return;
+        if (saved.widgets && saved.widgets.length > 0) {
+          setWidgets(saved.widgets);
+          setHistory([saved.widgets]);
+          setHistoryIndex(0);
+          setSelectedWidgetId(saved.widgets[0]?.id || '');
+        }
+        if (saved.salesData && saved.salesData.length > 0) {
+          setSalesData(saved.salesData);
+        }
+        if (saved.dashboardTitle) {
+          setDashboardTitle(saved.dashboardTitle);
+        }
+        if (saved.themeConfig) {
+          setThemeConfig(saved.themeConfig);
+        }
+        if (saved.filterState) {
+          setFilterState(saved.filterState);
+        }
+        if (saved.connectionConfig) {
+          setConnectionConfig(saved.connectionConfig);
+        }
+        if (saved.spacingMode) {
+          setSpacingMode(saved.spacingMode);
+        }
+        setIsSaved(true);
+        if (saved.lastSavedAt) {
+          setLastSavedTime(saved.lastSavedAt);
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [currentTeamUser?.id]);
+
+  // Requirement 7: Auto-save every 30 seconds
+  useEffect(() => {
+    if (!currentTeamUser?.id) return;
+    const interval = setInterval(() => {
+      performSave(true);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [currentTeamUser?.id, performSave]);
+
+  // Requirement 7: Debounced auto-save upon dashboard modification
+  const isInitialMount = React.useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    if (!currentTeamUser?.id) return;
+
+    setIsSaved(false);
+    const timeout = setTimeout(() => {
+      performSave(true);
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode]);
+
+  const handleAdoptTemplate = (template: DashboardTemplate) => {
+    setWidgets(template.widgets);
+    if (template.salesData && template.salesData.length > 0) {
+      setSalesData(template.salesData);
+    }
+    if (template.themePreset) {
+      setThemeConfig((prev) => ({ ...prev, preset: template.themePreset }));
+    }
+    setDashboardTitle(template.title);
+    setSelectedWidgetId(template.widgets[0]?.id || '');
+    setIsAssignedTemplatesOpen(false);
+  };
+
+  // Compute Active Theme Palettes & Styles
+  const themeStyles = useMemo(
+    () => getThemeStyles(themeConfig.preset),
+    [themeConfig.preset]
+  );
 
   // History Stack for Undo / Redo
   const [history, setHistory] = useState<VisualWidget[][]>([INITIAL_WIDGETS]);
@@ -913,6 +1022,7 @@ export default function App() {
         onGoogleSignOut={user ? handleGoogleSignOut : undefined}
         recordCount={salesData.length}
         onOpenMyDashboards={() => setIsMyDashboardsOpen(true)}
+        onOpenDataSourceStorage={() => setIsDataSourceModalOpen(true)}
         themeStyles={themeStyles}
       />
 
@@ -938,6 +1048,8 @@ export default function App() {
           dashboardTitle={dashboardTitle}
           onUpdateTitle={setDashboardTitle}
           isSaved={isSaved}
+          lastSavedAt={lastSavedTime}
+          onSaveDashboard={() => performSave(false)}
           isSyncing={isSyncing}
           onSync={handleSyncData}
           onUndo={handleUndo}
@@ -1063,10 +1175,29 @@ export default function App() {
         connectionConfig={connectionConfig}
         onRefreshFromSheet={handleSyncData}
         isSyncing={isSyncing}
+        onOpenDataSourceStorage={() => setIsDataSourceModalOpen(true)}
         onSaveData={(newData) => {
           setSalesData(newData);
           setConnectionConfig((prev) => ({
             ...prev,
+            lastSyncedAt: new Date().toLocaleTimeString('th-TH', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          }));
+        }}
+      />
+
+      {/* Data Source Storage Modal (Requirement 5) */}
+      <DataSourceModal
+        isOpen={isDataSourceModalOpen}
+        onClose={() => setIsDataSourceModalOpen(false)}
+        currentUser={currentTeamUser}
+        onSelectDataSource={(records, name) => {
+          setSalesData(records);
+          setConnectionConfig((prev) => ({
+            ...prev,
+            spreadsheetTitle: name,
             lastSyncedAt: new Date().toLocaleTimeString('th-TH', {
               hour: '2-digit',
               minute: '2-digit',
@@ -1117,15 +1248,20 @@ export default function App() {
         onRestoreVersion={handleRestoreVersion}
       />
 
-      {/* My Dashboards Collection Modal */}
+      {/* My Dashboards Collection Modal (Requirements 3, 4, 6, 8) */}
       <MyDashboardsModal
         isOpen={isMyDashboardsOpen}
         onClose={() => setIsMyDashboardsOpen(false)}
         currentWidgets={widgets}
         currentSalesData={salesData}
-        currentTheme={themeConfig.preset}
+        currentThemePreset={themeConfig.preset}
         currentDashboardTitle={dashboardTitle}
-        onLoadDashboard={(loadedWidgets, loadedData, loadedTheme, loadedTitle) => {
+        currentUser={currentTeamUser}
+        currentThemeConfig={themeConfig}
+        currentFilterState={filterState}
+        currentConnectionConfig={connectionConfig}
+        currentSpacingMode={spacingMode}
+        onLoadDashboard={(loadedWidgets, loadedData, loadedTheme, loadedTitle, loadedFilterState, loadedConnectionConfig) => {
           setWidgets(loadedWidgets);
           setSalesData(loadedData);
           if (loadedTheme) {
@@ -1134,8 +1270,15 @@ export default function App() {
           if (loadedTitle) {
             setDashboardTitle(loadedTitle);
           }
+          if (loadedFilterState) {
+            setFilterState(loadedFilterState);
+          }
+          if (loadedConnectionConfig) {
+            setConnectionConfig(loadedConnectionConfig);
+          }
           setSelectedWidgetId(loadedWidgets[0]?.id || '');
         }}
+        onSaveCurrentDashboard={() => performSave(false)}
       />
 
       {/* Team Authentication Modal (Login / Register / Account Switch) */}
