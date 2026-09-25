@@ -177,7 +177,11 @@ export default function App() {
     return 'studio';
   };
 
-  // Domain and Route detection for isolating Production User Domain and QA Test Lab Domain
+  // Domain and Route detection for isolating 3 Environments:
+  // 1. Production User Website (e.g. Vercel: dashboad-rose.vercel.app / ais-pre)
+  // 2. QA Test Lab (ais-dev or /test)
+  // 3. Admin Backoffice Platform (?portal=admin or /admin)
+  const VERCEL_PROD_DOMAIN = 'dashboad-rose.vercel.app';
   const SHARED_PROD_DOMAIN = 'ais-pre-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
   const DEV_TEST_DOMAIN = 'ais-dev-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
 
@@ -188,13 +192,24 @@ export default function App() {
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
 
-    // 1. If explicitly opened on Production User Domain -> NEVER show test features (Hard Production Mode)
-    if (host.includes('ais-pre-') || host.startsWith('app.') || host.startsWith('bi.')) {
-      // On production domain, only allow explicit test query param if intentionally forced
-      return params.get('mode') === 'test' || path === '/test';
+    // 1. If on Production Domains (Vercel, ais-pre, custom domain) -> NEVER show test features by default
+    if (
+      host.includes('vercel.app') ||
+      host.includes('ais-pre-') ||
+      host.startsWith('app.') ||
+      host.startsWith('bi.')
+    ) {
+      // Strictly isolate production: only activate if explicitly requested via param / route
+      return (
+        params.get('mode') === 'test' ||
+        path === '/test' ||
+        path.startsWith('/test/') ||
+        hash === '#test' ||
+        hash.includes('test')
+      );
     }
 
-    // 2. If opened on Development / QA Sandbox Domain -> Default to Test Lab Mode
+    // 2. If opened on Development / QA Sandbox Domain -> Default to QA Test Lab Mode
     if (
       host.includes('ais-dev-') ||
       host.startsWith('test.') ||
@@ -203,11 +218,10 @@ export default function App() {
       host.includes('sandbox') ||
       host.includes('localhost')
     ) {
-      // In dev domain, default to test environment unless explicitly switched to clean
       return params.get('clean') !== 'true' && path !== '/clean';
     }
 
-    // 3. Fallback path & param checks
+    // 3. Explicit path & param checks
     return (
       params.get('mode') === 'test' ||
       params.get('mode') === 'demo' ||
@@ -215,10 +229,7 @@ export default function App() {
       params.get('portal') === 'demo' ||
       path === '/test' ||
       path.startsWith('/test/') ||
-      path === '/demo' ||
-      path.startsWith('/demo/') ||
-      hash.includes('test') ||
-      hash.includes('demo')
+      hash.includes('test')
     );
   };
 
@@ -263,6 +274,15 @@ export default function App() {
     }
     setIsTestRoute(false);
     setViewMode('studio');
+  };
+
+  const handleOpenAdminPlatform = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('portal', 'admin');
+      window.history.pushState({}, '', url.toString());
+    }
+    setViewMode('dev_console');
   };
 
   const handleTestQuickSwitchUser = async (email: string) => {
@@ -1080,7 +1100,7 @@ export default function App() {
         onOpenTheme={() => setIsThemeModalOpen(true)}
         onOpenGettingStarted={() => setIsGettingStartedOpen(true)}
         onOpenDataEditor={() => setIsDataEditorOpen(true)}
-        onOpenDevConsole={undefined}
+        onOpenDevConsole={handleOpenAdminPlatform}
         onOpenPublish={() => setIsPublishModalOpen(true)}
         onOpenNotifications={() => setIsNotificationsModalOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
@@ -1165,7 +1185,7 @@ export default function App() {
           onOpenTheme={() => setIsThemeModalOpen(true)}
           onAddVisual={handleAddVisual}
           onAddFloatingText={handleAddFloatingText}
-          onOpenDevConsole={undefined}
+          onOpenDevConsole={handleOpenAdminPlatform}
           onOpenPublish={() => setIsPublishModalOpen(true)}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
           onOpenProfile={() => setIsProfileModalOpen(true)}

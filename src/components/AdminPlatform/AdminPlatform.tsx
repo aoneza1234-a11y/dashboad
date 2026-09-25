@@ -240,8 +240,14 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const originUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
-  const userPortalUrl = `${originUrl}?portal=app`;
+  const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  
+  // 3 Distinct Environments
+  const vercelUserProdUrl = 'https://dashboad-rose.vercel.app/';
+  const devTestLabUrl = 'https://ais-dev-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app/test';
+  const userPortalUrl = `${originUrl}/`;
+  const testPortalUrl = `${originUrl}/test`;
   const viewerPortalUrl = `${originUrl}?portal=viewer`;
   const adminPortalUrl = `${originUrl}?portal=admin`;
 
@@ -642,49 +648,92 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
               {/* System Portal Quick Access */}
               <div className="p-5 rounded-2xl bg-[#16112d] border border-violet-500/30 space-y-3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4 text-violet-400" />
-                  <span>ลิงก์เข้าถึงระบบทั้ง 3 พอร์ทัล (แยกคนละเว็บ / คนละหน้าที่)</span>
+                <h3 className="text-sm font-bold text-white flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <ExternalLink className="w-4 h-4 text-violet-400" />
+                    <span>ระบบแยก 3 เว็บไซต์สมบูรณ์แบบ (Production / QA Test / ระบบหลังบ้าน Admin)</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>ซิงค์คำสั่งแบบ Real-time ข้ามเว็บ</span>
+                  </span>
                 </h3>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="p-3.5 rounded-xl bg-[#1f193d] border border-violet-500/20 space-y-2">
+                  {/* 1. Production User Website (Vercel) */}
+                  <div className="p-3.5 rounded-xl bg-[#1a1435] border border-blue-500/30 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">1. เว็บไซต์ผู้ชม (Viewer)</span>
-                      <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded">ดูอย่างเดียว</span>
+                      <span className="text-xs font-bold text-blue-300">1. เว็บไซต์จริงผู้ใช้งาน (Production Web)</span>
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono font-bold">Vercel</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">สำหรับบุคคลภายนอก ดู กรอง ค้นหา โดยไม่มีปุ่มแก้ไขใดๆ</p>
-                    <button
-                      onClick={() => window.open(viewerPortalUrl, '_blank')}
-                      className="w-full py-1.5 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>เปิดเว็บผู้ชม</span>
-                    </button>
+                    <p className="text-[11px] text-slate-300">
+                      เว็บจริงสำหรับผู้ใช้งาน & ลูกค้า (<span className="text-blue-300 font-mono">dashboad-rose.vercel.app</span>) สะอาด 100% ไม่มีปุ่มเทส
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <button
+                        onClick={() => window.open(vercelUserProdUrl, '_blank')}
+                        className="flex-1 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer shadow-md"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดเว็บจริง Vercel</span>
+                      </button>
+                      <button
+                        onClick={() => copyToClip(vercelUserProdUrl, 'vercel')}
+                        className="p-1.5 rounded-lg bg-blue-950 hover:bg-blue-900 border border-blue-500/40 text-blue-200 transition cursor-pointer"
+                        title="คัดลอกลิงก์ Vercel"
+                      >
+                        {copiedLink === 'vercel' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-[#1f193d] border border-violet-500/20 space-y-2">
+                  {/* 2. QA Test Lab (Dev / Test) */}
+                  <div className="p-3.5 rounded-xl bg-[#1e153b] border border-purple-500/30 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">2. เว็บไซต์ผู้ใช้งาน (User Portal)</span>
-                      <span className="text-[10px] bg-violet-500/20 text-violet-300 px-1.5 py-0.5 rounded">สร้าง & วิเคราะห์</span>
+                      <span className="text-xs font-bold text-purple-300">2. ห้องทดสอบระบบ (QA Test Lab)</span>
+                      <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-mono font-bold">Dev / Test</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">สำหรับสมาชิก สร้าง Dashboard, ปรับแต่งกราฟ, จัดการข้อมูล</p>
-                    <button
-                      onClick={() => window.open(userPortalUrl, '_blank')}
-                      className="w-full py-1.5 rounded-lg bg-violet-600/40 hover:bg-violet-600/60 border border-violet-500/40 text-violet-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>เปิดเว็บผู้ใช้งาน</span>
-                    </button>
+                    <p className="text-[11px] text-slate-300">
+                      เว็บสำหรับทดสอบระบบ สลับ Persona 3 บัญชี ปรับแต่งฟีเจอร์ก่อนปล่อยขึ้นเว็บจริง
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <button
+                        onClick={() => window.open(devTestLabUrl, '_blank')}
+                        className="flex-1 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer shadow-md"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดห้องทดสอบ QA</span>
+                      </button>
+                      <button
+                        onClick={() => copyToClip(devTestLabUrl, 'dev_test')}
+                        className="p-1.5 rounded-lg bg-purple-950 hover:bg-purple-900 border border-purple-500/40 text-purple-200 transition cursor-pointer"
+                        title="คัดลอกลิงก์ทดสอบ"
+                      >
+                        {copiedLink === 'dev_test' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-[#1f193d] border border-violet-500/20 space-y-2">
+                  {/* 3. Admin Backoffice Platform */}
+                  <div className="p-3.5 rounded-xl bg-[#231227] border border-rose-500/40 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">3. ระบบจัดการเว็บไซต์ (Admin)</span>
-                      <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded">ควบคุมระบบ</span>
+                      <span className="text-xs font-bold text-rose-300">3. ศูนย์ควบคุมหลังบ้าน (Admin Platform)</span>
+                      <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-mono font-bold">👑 Admin Master</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">ควบคุมทั้งระบบ จัดการผู้ใช้ บล็อก เปิด-ปิดเว็บ ตั้งค่าระบบ</p>
-                    <div className="w-full py-1.5 rounded-lg bg-rose-600/20 border border-rose-500/40 text-rose-300 text-xs font-semibold text-center">
-                      (คุณกำลังใช้งานหน้านี้อยู่)
+                    <p className="text-[11px] text-slate-300">
+                      ควบคุมสั่งปรับปรุง ปิด-เปิดเว็บ ส่งแจ้งเตือนแบนเนอร์ และคุมสิทธิ์ผู้ใช้ทุกเว็บ
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <div className="flex-1 py-1.5 rounded-lg bg-rose-600/30 border border-rose-500/40 text-rose-200 text-xs font-bold text-center">
+                        ✓ กำลังใช้งานอยู่
+                      </div>
+                      <button
+                        onClick={() => copyToClip(adminPortalUrl, 'admin')}
+                        className="p-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-500/40 text-rose-200 transition cursor-pointer"
+                        title="คัดลอกลิงก์ระบบหลังบ้าน"
+                      >
+                        {copiedLink === 'admin' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -832,39 +881,43 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
               <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <ExternalLink className="w-5 h-5 text-violet-400" />
-                  <span>จัดการและคัดลอกลิงก์ทั้ง 3 เว็บไซต์ (แยกการเข้าถึงเด็ดขาด)</span>
+                  <span>จัดการและคัดลอกลิงก์ 3 เว็บไซต์ (แยกการเข้าถึงเด็ดขาด)</span>
                 </h3>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   ระบบถูกออกแบบให้แยกอิสระเป็น 3 เว็บไซต์ คุณสามารถคัดลอกลิงก์ที่ถูกต้องส่งให้แก่กลุ่มเป้าหมายแต่ละกลุ่ม:
                 </p>
 
-                {/* 1. Viewer */}
-                <div className="p-4 rounded-2xl bg-[#1e193c] border border-cyan-500/30 space-y-2">
+                {/* 1. Production Web (Vercel) */}
+                <div className="p-4 rounded-2xl bg-[#1a1435] border border-blue-500/40 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                      <span className="text-xs font-bold text-cyan-300">1. ลิงก์สำหรับผู้ชมทั่วไป (Viewer Portal Link)</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                      <span className="text-xs font-bold text-blue-300">1. เว็บไซต์จริงผู้ใช้งาน (Production Web - Vercel)</span>
                     </div>
-                    <span className="text-[10px] text-cyan-400 font-medium">ดูอย่างเดียว ปลอดภัย ไม่มีเมนูแก้ไข</span>
+                    <span className="text-[10px] text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded font-mono font-bold">
+                      สำหรับผู้ใช้และลูกค้าจริง
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-400">สำหรับส่งให้ผู้บริหาร ลูกค้า หรือบุคคลทั่วไปเปิดดูรายงานและฟิลเตอร์ข้อมูล</p>
+                  <p className="text-[11px] text-slate-400">
+                    เว็บสะอาด 100% ไม่มีปุ่มทดสอบหรือแถบเทส สำหรับส่งให้ลูกค้า/ผู้ใช้งานจริงเข้าทำงาน
+                  </p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={viewerPortalUrl}
-                      className="flex-1 bg-[#120d26] border border-cyan-500/40 rounded-xl px-3 py-2 text-xs text-cyan-200 font-mono select-all focus:outline-none"
+                      value={vercelUserProdUrl}
+                      className="flex-1 bg-[#120d26] border border-blue-500/40 rounded-xl px-3 py-2 text-xs text-blue-200 font-mono select-all focus:outline-none"
                     />
                     <button
-                      onClick={() => copyToClip(viewerPortalUrl, 'viewer')}
-                      className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow"
+                      onClick={() => copyToClip(vercelUserProdUrl, 'vercel_links')}
+                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow"
                     >
-                      {copiedLink === 'viewer' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedLink === 'viewer' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
+                      {copiedLink === 'vercel_links' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink === 'vercel_links' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
                     </button>
                     <button
-                      onClick={() => window.open(viewerPortalUrl, '_blank')}
-                      className="px-3.5 py-2 rounded-xl border border-cyan-500/40 hover:bg-white/10 text-cyan-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
+                      onClick={() => window.open(vercelUserProdUrl, '_blank')}
+                      className="px-3.5 py-2 rounded-xl border border-blue-500/40 hover:bg-white/10 text-blue-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>เปิดเว็บ</span>
@@ -872,35 +925,37 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                   </div>
                 </div>
 
-                {/* 2. User Portal */}
-                <div className="p-4 rounded-2xl bg-[#1e193c] border border-violet-500/30 space-y-2">
+                {/* 2. QA Test Lab */}
+                <div className="p-4 rounded-2xl bg-[#1e153b] border border-purple-500/40 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-violet-400" />
-                      <span className="text-xs font-bold text-violet-300">2. ลิงก์สำหรับผู้ใช้งาน & สมาชิก (User App / Studio Link)</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+                      <span className="text-xs font-bold text-purple-300">2. ห้องทดสอบระบบ (QA Test Lab / Sandbox)</span>
                     </div>
-                    <span className="text-[10px] text-violet-400 font-medium">สร้าง & ออกแบบแดชบอร์ด</span>
+                    <span className="text-[10px] text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded font-mono font-bold">
+                      สำหรับทีมเทสและทดลอง
+                    </span>
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    สำหรับสมาชิกทีมหรือผู้ใช้งาน (หากผู้ใช้ลบพารามิเตอร์ของลิงก์ออกทั้งหมด จะยังคงอยู่ที่หน้านี้เสมอ)
+                    เว็บสำหรับทดสอบระบบ สลับ Persona 3 บัญชี ปรับแต่งฟีเจอร์ก่อนปล่อยขึ้นเว็บจริง
                   </p>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={userPortalUrl}
-                      className="flex-1 bg-[#120d26] border border-violet-500/40 rounded-xl px-3 py-2 text-xs text-violet-200 font-mono select-all focus:outline-none"
+                      value={devTestLabUrl}
+                      className="flex-1 bg-[#120d26] border border-purple-500/40 rounded-xl px-3 py-2 text-xs text-purple-200 font-mono select-all focus:outline-none"
                     />
                     <button
-                      onClick={() => copyToClip(userPortalUrl, 'user')}
-                      className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow"
+                      onClick={() => copyToClip(devTestLabUrl, 'dev_test_links')}
+                      className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow"
                     >
-                      {copiedLink === 'user' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedLink === 'user' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
+                      {copiedLink === 'dev_test_links' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink === 'dev_test_links' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
                     </button>
                     <button
-                      onClick={() => window.open(userPortalUrl, '_blank')}
-                      className="px-3.5 py-2 rounded-xl border border-violet-500/40 hover:bg-white/10 text-violet-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
+                      onClick={() => window.open(devTestLabUrl, '_blank')}
+                      className="px-3.5 py-2 rounded-xl border border-purple-500/40 hover:bg-white/10 text-purple-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>เปิดเว็บ</span>
@@ -909,11 +964,11 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                 </div>
 
                 {/* 3. Admin Platform */}
-                <div className="p-4 rounded-2xl bg-[#1e193c] border border-rose-500/30 space-y-2">
+                <div className="p-4 rounded-2xl bg-[#231227] border border-rose-500/40 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                      <span className="text-xs font-bold text-rose-300">3. ลิงก์ระบบจัดการเว็บไซต์หลังบ้าน (Admin Platform Link)</span>
+                      <span className="text-xs font-bold text-rose-300">3. ศูนย์ควบคุมหลังบ้าน (Admin Platform)</span>
                     </div>
                     <span className="text-[10px] text-rose-400 font-medium">เฉพาะผู้ดูแลระบบ (ป้องกันด้วย Passcode)</span>
                   </div>
@@ -941,6 +996,40 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                     >
                       <Lock className="w-3.5 h-3.5" />
                       <span>ล็อกหน้าจอ</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Viewer Portal */}
+                <div className="p-4 rounded-2xl bg-[#1e193c] border border-cyan-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                      <span className="text-xs font-bold text-cyan-300">4. ลิงก์สำหรับผู้ชมทั่วไป (Viewer Portal Link)</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400 font-medium">ดูอย่างเดียว ปลอดภัย ไม่มีเมนูแก้ไข</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">สำหรับส่งให้ผู้บริหาร ลูกค้า หรือบุคคลทั่วไปเปิดดูรายงานและฟิลเตอร์ข้อมูล</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={viewerPortalUrl}
+                      className="flex-1 bg-[#120d26] border border-cyan-500/40 rounded-xl px-3 py-2 text-xs text-cyan-200 font-mono select-all focus:outline-none"
+                    />
+                    <button
+                      onClick={() => copyToClip(viewerPortalUrl, 'viewer')}
+                      className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow"
+                    >
+                      {copiedLink === 'viewer' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink === 'viewer' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
+                    </button>
+                    <button
+                      onClick={() => window.open(viewerPortalUrl, '_blank')}
+                      className="px-3.5 py-2 rounded-xl border border-cyan-500/40 hover:bg-white/10 text-cyan-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>เปิดเว็บ</span>
                     </button>
                   </div>
                 </div>

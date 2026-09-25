@@ -280,6 +280,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>การแจ้งเตือน</span>
           </div>
         </button>
+
+        {/* Admin Platform / Backoffice (Strictly for Admin or Direct Gate access) */}
+        {onOpenDevConsole && (
+          <button
+            id="nav-admin-platform"
+            onClick={onOpenDevConsole}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md transition cursor-pointer group ${
+              currentUser?.role === 'admin'
+                ? 'bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-200 mt-1 shadow-sm'
+                : 'hover:bg-[#1c1833] text-slate-400 hover:text-rose-300'
+            }`}
+            title="เข้าสู่ระบบจัดการเว็บไซต์หลังบ้าน (Admin Platform) - ปิด-เปิดเว็บ, จัดการสิทธิ์ผู้ใช้, สั่งปรับปรุงระบบ"
+          >
+            <div className="flex items-center gap-2.5">
+              <Shield className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold">ระบบหลังบ้าน (Admin)</span>
+            </div>
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              👑 หลังบ้าน
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Connections Section */}
