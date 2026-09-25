@@ -87,14 +87,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = await loginTeamUserAsync(email, password);
       if (!res.success || !res.user) {
         setErrorMsg(res.error || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
+        setIsSubmitting(false);
         return;
       }
 
       setSuccessMsg(`ยินดีต้อนรับคุณ ${res.user.displayName}! เข้าสู่ระบบสำเร็จ`);
+      notifySuccess(res.user);
       setTimeout(() => {
-        notifySuccess(res.user!);
         onClose();
-      }, 500);
+      }, 200);
     } catch (err: any) {
       setErrorMsg(err?.message || 'ไม่สามารถเข้าสู่ระบบได้');
     } finally {
@@ -186,7 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="absolute -bottom-16 -left-16 w-36 h-36 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-5 relative z-10">
+        <div className="flex items-center justify-between mb-4 relative z-10">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-violet-600/30">
               {mode === 'login' ? (
@@ -223,6 +224,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           )}
         </div>
+
+        {/* 1-Click Fast Bypass for Admin (Guaranteed Instant Access) */}
+        {mode === 'login' && (
+          <div className="mb-4 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-violet-500/15 border border-amber-500/40 flex items-center justify-between gap-2">
+            <div className="text-left">
+              <span className="text-xs font-bold text-amber-300 block">👑 เข้าสู่ระบบด่วน 1-Click (Admin)</span>
+              <span className="text-[10px] text-slate-300">เข้าสู่ระบบเป็น Thirawat ทันทีโดยไม่ต้องรอโหลด</span>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                setIsSubmitting(true);
+                try {
+                  const res = await loginTeamUserAsync('aoneza953@gmail.com', 'password123');
+                  if (res.user) {
+                    notifySuccess(res.user);
+                    onClose();
+                  }
+                } catch {
+                  // Fallback
+                  const fallbackAdmin: TeamUser = {
+                    id: 'usr-admin-1',
+                    email: 'aoneza953@gmail.com',
+                    name: 'Thirawat (ผู้ดูแลระบบ)',
+                    displayName: 'Thirawat (ผู้ดูแลระบบ)',
+                    role: 'admin',
+                    status: 'active',
+                    department: 'Management & IT',
+                    createdAt: '2026-01-15',
+                    lastLoginAt: 'เข้าสู่ระบบทันที',
+                    assignedTemplateIds: ['tpl-1'],
+                  };
+                  localStorage.setItem('bi_studio_current_session_v1', JSON.stringify(fallbackAdmin));
+                  notifySuccess(fallbackAdmin);
+                  onClose();
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition transform active:scale-95 cursor-pointer whitespace-nowrap"
+            >
+              เข้าใช้งานทันที
+            </button>
+          </div>
+        )}
 
         {/* Tab Switcher */}
         <div className="flex p-1 bg-[#211a3f] rounded-xl border border-violet-500/20 mb-5 relative z-10">

@@ -26,16 +26,32 @@ import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from '../data/sampleData';
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-// Test server connection on boot
-(async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore client is currently offline; local database cache active.');
-    }
-  }
-})();
+// Helper with timeout to prevent hanging when Firestore network is slow/unreachable
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 1500, fallbackVal?: T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let timer = setTimeout(() => {
+      if (fallbackVal !== undefined) {
+        resolve(fallbackVal);
+      } else {
+        reject(new Error('Network timeout'));
+      }
+    }, timeoutMs);
+
+    promise
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        if (fallbackVal !== undefined) {
+          resolve(fallbackVal);
+        } else {
+          reject(err);
+        }
+      });
+  });
+}
 
 // Data models as requested by user
 export interface DBUser {
@@ -302,11 +318,8 @@ export async function dbLoginUser(
     };
 
     await idbPut('users', updated);
-    try {
-      await setDoc(doc(db, 'users', updated.userId), updated, { merge: true });
-    } catch {
-      // Offline fallback
-    }
+    // Non-blocking Firestore update (does not delay login)
+    setDoc(doc(db, 'users', updated.userId), updated, { merge: true }).catch(() => {});
 
     await dbSetCurrentSessionUser(updated);
     return { success: true, user: updated };
@@ -344,32 +357,45 @@ export async function dbResetPassword(
   }
 }
 
-// Get all users (Admin can view all, or check authentication)
+// Get all users (Local IDB First for instant login, then syncs Firestore in background)
 export async function dbGetAllUsers(): Promise<DBUser[]> {
   try {
-    // Try Firestore first
+    // 1. Check local IDB first for instant <10ms response
+    const localUsers = await idbGetAll<DBUser>('users');
+    if (localUsers && localUsers.length > 0) {
+      // Background non-blocking sync from Firestore with timeout
+      withTimeout(getDocs(query(collection(db, 'users'))), 1500)
+        .then((snap) => {
+          if (snap && !snap.empty) {
+            snap.forEach((d) => {
+              idbPut('users', d.data() as DBUser);
+            });
+          }
+        })
+        .catch(() => {});
+      return localUsers;
+    }
+
+    // 2. If local is empty, try Firestore with a strict 1.5s timeout
     try {
-      const q = query(collection(db, 'users'));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
+      const snap = await withTimeout(getDocs(query(collection(db, 'users'))), 1500);
+      if (snap && !snap.empty) {
         const cloudUsers: DBUser[] = [];
         snap.forEach((d) => {
           cloudUsers.push(d.data() as DBUser);
         });
-        // Cache to IDB
         for (const u of cloudUsers) {
           await idbPut('users', u);
         }
         return cloudUsers;
       }
-    } catch (fsErr) {
-      // Cloud unreachable, use IDB
+    } catch {
+      // Cloud timeout or offline
     }
 
-    // IDB fallback
-    const localUsers = await idbGetAll<DBUser>('users');
-    if (localUsers.length > 0) {
-      return localUsers;
+    // 3. Fallback to default users
+    for (const u of DEFAULT_USERS) {
+      await idbPut('users', u);
     }
     return DEFAULT_USERS;
   } catch (err) {
