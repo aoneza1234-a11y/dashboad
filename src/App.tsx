@@ -1242,6 +1242,7 @@ export default function App() {
           spacingMode={spacingMode}
           onSpacingChange={setSpacingMode}
           themeStyles={themeStyles}
+          isTestRoute={isTestRoute}
         />
 
         {/* Central Visual Canvas */}

@@ -281,16 +281,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </button>
 
-        {/* Admin Platform / Backoffice (Strictly for Admin or Direct Gate access) */}
-        {onOpenDevConsole && (
+        {/* Admin Platform / Backoffice - ONLY visible when user is specifically in QA Test/Dev mode (e.g. #dev, #test) AND has admin access */}
+        {isTestRoute && currentUser?.role === 'admin' && onOpenDevConsole && (
           <button
             id="nav-admin-platform"
             onClick={onOpenDevConsole}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-md transition cursor-pointer group ${
-              currentUser?.role === 'admin'
-                ? 'bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-200 mt-1 shadow-sm'
-                : 'hover:bg-[#1c1833] text-slate-400 hover:text-rose-300'
-            }`}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-md transition cursor-pointer group bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-200 mt-1 shadow-sm"
             title="เข้าสู่ระบบจัดการเว็บไซต์หลังบ้าน (Admin Platform) - ปิด-เปิดเว็บ, จัดการสิทธิ์ผู้ใช้, สั่งปรับปรุงระบบ"
           >
             <div className="flex items-center gap-2.5">
@@ -509,31 +505,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })()}
 
-        {/* Route Switcher: Switch between clean User Portal (/) and QA Test Lab (/test) */}
-        {isTestRoute ? (
-          onNavigateToUserPortal && (
-            <button
-              id="btn-sidebar-switch-to-user"
-              onClick={onNavigateToUserPortal}
-              className="w-full mt-1.5 py-1.5 px-2.5 rounded-lg bg-blue-950/70 hover:bg-blue-900 border border-blue-500/40 text-blue-200 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
-              title="สลับไปยังเส้นทางเว็บผู้ใช้งานจริง (Production: /) - สะอาดตา ไม่มีเครื่องมือเทส"
-            >
-              <Globe className="w-3.5 h-3.5 text-blue-400" />
-              <span>ไปยังเว็บผู้ใช้งานจริง (Clean /)</span>
-            </button>
-          )
-        ) : (
-          onNavigateToTestPortal && (
-            <button
-              id="btn-sidebar-switch-to-test"
-              onClick={onNavigateToTestPortal}
-              className="w-full mt-1.5 py-1 px-2 rounded-lg bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/20 text-purple-300/80 hover:text-purple-200 text-[10px] flex items-center justify-center gap-1.5 transition cursor-pointer"
-              title="สลับไปยังเส้นทางทดสอบระบบสำหรับผู้ทดสอบ (/test) เพื่อสลับ Persona และทดสอบจำลอง"
-            >
-              <FlaskConical className="w-3 h-3 text-purple-400" />
-              <span>ห้องทดสอบระบบ (/test)</span>
-            </button>
-          )
+        {/* Route Switcher: Only shown in QA Test/Dev mode (e.g. #dev, #test) */}
+        {isTestRoute && onNavigateToUserPortal && (
+          <button
+            id="btn-sidebar-switch-to-user"
+            onClick={onNavigateToUserPortal}
+            className="w-full mt-1.5 py-1.5 px-2.5 rounded-lg bg-blue-950/70 hover:bg-blue-900 border border-blue-500/40 text-blue-200 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
+            title="สลับไปยังเส้นทางเว็บผู้ใช้งานจริง (Production: /) - สะอาดตา ไม่มีเครื่องมือเทส"
+          >
+            <Globe className="w-3.5 h-3.5 text-blue-400" />
+            <span>ไปยังเว็บผู้ใช้งานจริง (Clean /)</span>
+          </button>
         )}
       </div>
     </aside>

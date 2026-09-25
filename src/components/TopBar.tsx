@@ -89,6 +89,7 @@ interface TopBarProps {
   onOpenPublish?: () => void;
   onOpenNotifications?: () => void;
   onOpenProfile?: () => void;
+  isTestRoute?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -133,6 +134,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenPublish,
   onOpenNotifications,
   onOpenProfile,
+  isTestRoute = false,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(dashboardTitle);
@@ -414,8 +416,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span>{isPreviewMode ? 'ออกจากการพรีวิว' : 'พรีวิว'}</span>
           </button>
 
-          {/* Admin Platform shortcut strictly for admins only */}
-          {currentUser?.role === 'admin' && onOpenDevConsole && (
+          {/* Admin Platform shortcut strictly in QA Test/Dev mode (e.g. #dev, #test) for admins */}
+          {isTestRoute && currentUser?.role === 'admin' && onOpenDevConsole && (
             <button
               id="btn-admin-platform-shortcut"
               onClick={onOpenDevConsole}
