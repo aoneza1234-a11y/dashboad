@@ -50,14 +50,26 @@ export function loadUserDashboard(userId: string): UserDashboardData | null {
   if (typeof window === 'undefined') return null;
   try {
     const key = getUserDashboardKey(userId);
-    const raw = localStorage.getItem(key);
+    let raw = localStorage.getItem(key);
+    if (!raw) {
+      raw = localStorage.getItem(`user_dashboard_${userId}`);
+    }
+    if (!raw) {
+      raw = localStorage.getItem(`user_dashboard_${userId.trim().toLowerCase()}`);
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw);
 
     // Retrieve user-specific isolated sales data
     let sales = parsed.salesData;
     const salesKey = getUserSalesDataKey(userId);
-    const rawSales = localStorage.getItem(salesKey);
+    let rawSales = localStorage.getItem(salesKey);
+    if (!rawSales) {
+      rawSales = localStorage.getItem(`user_sales_data_${userId}`);
+    }
+    if (!rawSales) {
+      rawSales = localStorage.getItem(`user_sales_data_${userId.trim().toLowerCase()}`);
+    }
     if (rawSales) {
       try {
         const parsedSales = JSON.parse(rawSales);
@@ -236,8 +248,15 @@ export function saveUserDashboard(
   if (typeof window !== 'undefined') {
     try {
       const key = getUserDashboardKey(userId);
-      localStorage.setItem(key, JSON.stringify(payload));
-      localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(data.salesData));
+      const str = JSON.stringify(payload);
+      localStorage.setItem(key, str);
+      localStorage.setItem(`user_dashboard_${userId}`, str);
+      localStorage.setItem(`user_dashboard_${userId.trim().toLowerCase()}`, str);
+
+      const salesStr = JSON.stringify(data.salesData);
+      localStorage.setItem(getUserSalesDataKey(userId), salesStr);
+      localStorage.setItem(`user_sales_data_${userId}`, salesStr);
+      localStorage.setItem(`user_sales_data_${userId.trim().toLowerCase()}`, salesStr);
     } catch (e) {
       console.warn('Fast cache error', e);
     }

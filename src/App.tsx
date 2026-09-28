@@ -51,6 +51,7 @@ import {
   getStarterUserDashboard,
   getUserSalesDataKey,
   refreshUserLiveData,
+  UserDashboardData,
 } from './services/userDashboardStore';
 import { applyGlobalFilters } from './utils/calcEngine';
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from './data/sampleData';
@@ -232,9 +233,23 @@ export default function App() {
   };
 
   const handleTestQuickSwitchUser = async (email: string) => {
+    if (currentTeamUser?.id) {
+      try {
+        saveUserDashboard(currentTeamUser.id, {
+          widgets,
+          salesData,
+          dashboardTitle,
+          themeConfig,
+          filterState,
+          connectionConfig,
+          spacingMode,
+        });
+      } catch (e) {}
+    }
     const res = await loginTeamUserAsync(email, 'password123');
     if (res.success && res.user) {
       setCurrentTeamUser(res.user);
+      applyUserDashboard(res.user);
     }
   };
 
@@ -374,11 +389,56 @@ export default function App() {
   }, []);
 
   // Core User-Isolated Dashboard Loader & Live Sync
-  // กราฟและการ์ดทุกชิ้นจะจำค่าเดิมไว้ ส่วนข้อมูลจะดึงสดแบบเรียลไทม์เมื่อมีชีตเชื่อมต่อ
+  // กราฟและการ์ดทุกชิ้นจะจำค่าเดิมไว้ ข้อมูลไม่หายเมื่อล็อกอินเข้าออก
+  const isPopulatingUserDataRef = React.useRef(false);
+
+  const applyDashboardData = React.useCallback(
+    (data: UserDashboardData) => {
+      isPopulatingUserDataRef.current = true;
+      if (data.widgets && data.widgets.length > 0) {
+        setWidgets(data.widgets);
+        setHistory([data.widgets]);
+        setHistoryIndex(0);
+        setSelectedWidgetId(data.widgets[0]?.id || '');
+      }
+      if (data.salesData && data.salesData.length > 0) {
+        setSalesData(data.salesData);
+      } else {
+        setSalesData(INITIAL_SALES_RECORDS);
+      }
+      if (data.dashboardTitle) {
+        setDashboardTitle(data.dashboardTitle);
+      }
+      if (data.themeConfig) {
+        setThemeConfig(data.themeConfig);
+      }
+      if (data.filterState) {
+        setFilterState(data.filterState);
+      }
+      if (data.connectionConfig) {
+        setConnectionConfig(data.connectionConfig);
+      }
+      if (data.spacingMode) {
+        setSpacingMode(data.spacingMode);
+      }
+      setIsSaved(true);
+      if (data.lastSavedAt) {
+        setLastSavedTime(data.lastSavedAt);
+      }
+
+      // Unlock after state flush
+      setTimeout(() => {
+        isPopulatingUserDataRef.current = false;
+      }, 150);
+    },
+    []
+  );
+
   const applyUserDashboard = React.useCallback(
     (user: TeamUser | null) => {
       if (!user) {
         // Reset to clean default state on logout
+        isPopulatingUserDataRef.current = true;
         setWidgets(INITIAL_WIDGETS);
         setSalesData(INITIAL_SALES_RECORDS);
         setDashboardTitle('ภาพรวมยอดขาย');
@@ -400,47 +460,38 @@ export default function App() {
         setHistory([INITIAL_WIDGETS]);
         setHistoryIndex(0);
         setSelectedWidgetId(INITIAL_WIDGETS[0]?.id || '');
+        setTimeout(() => {
+          isPopulatingUserDataRef.current = false;
+        }, 150);
         return;
       }
 
-      // Fast read user's saved template (<2ms)
-      const saved = loadUserDashboard(user.id) || getStarterUserDashboard(user);
-      if (saved.widgets && saved.widgets.length > 0) {
-        setWidgets(saved.widgets);
-        setHistory([saved.widgets]);
-        setHistoryIndex(0);
-        setSelectedWidgetId(saved.widgets[0]?.id || '');
-      }
-      if (saved.salesData && saved.salesData.length > 0) {
-        setSalesData(saved.salesData);
+      // 1. Fast read user's saved template from localStorage (<1ms)
+      const saved = loadUserDashboard(user.id);
+      if (saved && saved.widgets && saved.widgets.length > 0) {
+        applyDashboardData(saved);
       } else {
-        setSalesData(INITIAL_SALES_RECORDS);
-      }
-      if (saved.dashboardTitle) {
-        setDashboardTitle(saved.dashboardTitle);
-      }
-      if (saved.themeConfig) {
-        setThemeConfig(saved.themeConfig);
-      }
-      if (saved.filterState) {
-        setFilterState(saved.filterState);
-      }
-      if (saved.connectionConfig) {
-        setConnectionConfig(saved.connectionConfig);
-      }
-      if (saved.spacingMode) {
-        setSpacingMode(saved.spacingMode);
-      }
-      setIsSaved(true);
-      if (saved.lastSavedAt) {
-        setLastSavedTime(saved.lastSavedAt);
+        // 2. If not found in localStorage, fetch from IndexedDB & Cloud Database before falling back to starter
+        loadUserDashboardFromCloud(user.id).then((cloudData) => {
+          if (cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
+            applyDashboardData(cloudData);
+          } else {
+            const starter = getStarterUserDashboard(user);
+            applyDashboardData(starter);
+            saveUserDashboard(user.id, starter);
+          }
+        }).catch(() => {
+          const starter = getStarterUserDashboard(user);
+          applyDashboardData(starter);
+          saveUserDashboard(user.id, starter);
+        });
       }
 
-      // Live Real-Time Google Sheets refresh (ดึงข้อมูลแบบเรียลไทม์เมื่อเปิดหรือเมื่อชีทอัปเดต)
-      // กราฟและการ์ดจะจำค่าเดิมไว้ ส่วนข้อมูลจะดึงสดจากชีต!
-      if (saved.connectionConfig && saved.connectionConfig.spreadsheetId) {
+      // 3. Live Real-Time Google Sheets refresh (ดึงข้อมูลแบบเรียลไทม์เมื่อเปิดหรือเมื่อชีทอัปเดต)
+      const targetConfig = saved?.connectionConfig;
+      if (targetConfig && targetConfig.spreadsheetId) {
         setIsSyncing(true);
-        refreshUserLiveData(user.id, saved.connectionConfig, accessToken).then((res) => {
+        refreshUserLiveData(user.id, targetConfig, accessToken).then((res) => {
           setIsSyncing(false);
           if (res.success && res.records && res.records.length > 0) {
             setSalesData(res.records);
@@ -457,10 +508,27 @@ export default function App() {
         });
       }
     },
-    [accessToken]
+    [accessToken, applyDashboardData]
   );
 
   const handleTeamLogout = () => {
+    // 1. Force flush current user's changes to storage BEFORE logging out!
+    if (currentTeamUser?.id) {
+      try {
+        saveUserDashboard(currentTeamUser.id, {
+          widgets,
+          salesData,
+          dashboardTitle,
+          themeConfig,
+          filterState,
+          connectionConfig,
+          spacingMode,
+        });
+      } catch (e) {
+        console.warn('Logout save notice', e);
+      }
+    }
+    // 2. Clear user session and clean up React state
     logoutTeamUser();
     clearUserDashboardSession();
     setCurrentTeamUser(null);
@@ -473,7 +541,7 @@ export default function App() {
   // Perform save to Cloud Database with full configuration (Requirement 4)
   const performSave = React.useCallback(
     async (isAuto = false) => {
-      if (!currentTeamUser?.id) return;
+      if (!currentTeamUser?.id || isPopulatingUserDataRef.current) return;
       try {
         const timeStr = new Date().toLocaleTimeString('th-TH');
         saveUserDashboard(currentTeamUser.id, {
@@ -512,31 +580,26 @@ export default function App() {
     }
   }, [currentTeamUser, applyUserDashboard]);
 
-  // Requirement 7: Auto-save every 30 seconds (isolated per user)
+  // Immediate Auto-Save upon any change (instant local-first, zero data loss!)
   useEffect(() => {
-    if (!currentTeamUser?.id) return;
-    const interval = setInterval(() => {
-      performSave(true);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [currentTeamUser?.id, performSave]);
-
-  // Requirement 7: Debounced auto-save upon dashboard modification
-  const isInitialMount = React.useRef(true);
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
+    if (!currentTeamUser?.id || isPopulatingUserDataRef.current) return;
+    try {
+      const timeStr = new Date().toLocaleTimeString('th-TH');
+      saveUserDashboard(currentTeamUser.id, {
+        widgets,
+        salesData,
+        dashboardTitle,
+        themeConfig,
+        filterState,
+        connectionConfig,
+        spacingMode,
+      });
+      setIsSaved(true);
+      setLastSavedTime(timeStr);
+    } catch (e) {
+      console.warn('Auto-save error', e);
     }
-    if (!currentTeamUser?.id) return;
-
-    setIsSaved(false);
-    const timeout = setTimeout(() => {
-      performSave(true);
-    }, 5000);
-
-    return () => clearTimeout(timeout);
-  }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode]);
+  }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode, currentTeamUser?.id]);
 
   const handleAdoptTemplate = (template: DashboardTemplate) => {
     setWidgets(template.widgets);
