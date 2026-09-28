@@ -42,6 +42,8 @@ import {
   UserX,
   FileCode,
   Settings,
+  Clock,
+  X,
 } from 'lucide-react';
 import {
   getSiteStatus,
@@ -2039,24 +2041,57 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
           {/* SECTION: All Data & Editing */}
           {activeSection === 'all_data' && (
-            <div className="space-y-6 max-w-5xl">
+            <div className="space-y-6 max-w-6xl">
               <div className="p-6 rounded-3xl bg-[#16112d] border border-violet-500/30 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Header and Dataset Selector */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-base font-bold text-white flex items-center gap-2">
                       <Database className="w-5 h-5 text-emerald-400" />
-                      <span>จัดการและปรับแต่งชุดข้อมูล ({currentSalesData.length} แถว)</span>
+                      <span>จัดการและปรับแต่งชุดข้อมูล ({displayedRecords.length} แถว)</span>
                     </h3>
                     <p className="text-xs text-slate-300 mt-0.5">
-                      แก้ไขค่าในตารางโดยตรง เพิ่มแถว ลบแถว หรือค้นหาข้อมูล การเปลี่ยนแปลงจะซิงค์ไปยังแดชบอร์ดหน้าเว็บหลักทันที
+                      เลือกชุดข้อมูลจากคลาวด์เพื่อปรับแต่ง แก้ไขเซลล์ เพิ่ม/ลบแถว ส่งออก หรือนำไปแสดงผลบนหน้าเว็บผู้ใช้ทันที
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {/* Dataset Selector Dropdown */}
+                  <div className="flex items-center gap-2 bg-[#1b1538] p-1.5 rounded-2xl border border-violet-500/30 shrink-0">
+                    <span className="text-[11px] text-slate-400 pl-2 font-medium">ชุดข้อมูล:</span>
+                    <select
+                      value={selectedDatasetSourceId}
+                      onChange={(e) => {
+                        setSelectedDatasetSourceId(e.target.value);
+                        setEditingRowId(null);
+                        setEditRowData(null);
+                      }}
+                      className="bg-[#261e4b] border border-violet-500/40 rounded-xl px-3 py-1.5 text-xs text-white outline-none cursor-pointer font-semibold"
+                    >
+                      <option value="active_workspace">🖥️ ชุดข้อมูลบนหน้าเว็บหลัก (Active Workspace - {currentSalesData.length} แถว)</option>
+                      {adminDataSources.map((ds) => (
+                        <option key={ds.dataSourceId} value={ds.dataSourceId}>
+                          📁 {ds.fileName} ({ds.recordCount} แถว)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Notification Banner */}
+                {dataSuccessMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{dataSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-white/10">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Add row button */}
                     <button
                       onClick={() => {
-                        if (!onUpdateSalesData) return;
-                        const nextId = currentSalesData.length > 0 ? Math.max(...currentSalesData.map(r => r.id || 0)) + 1 : 1;
+                        const nextId = displayedRecords.length > 0 ? Math.max(...displayedRecords.map(r => Number(r.id) || 0)) + 1 : 1;
                         const newRow: SalesRecord = {
                           id: nextId,
                           date: new Date().toISOString().split('T')[0],
@@ -2069,46 +2104,84 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                           cost: 9000,
                           profit: 6000,
                         };
-                        onUpdateSalesData([newRow, ...currentSalesData]);
-                        setDataSuccessMsg('เพิ่มแถวข้อมูลใหม่สำเร็จ');
+                        handleUpdateDisplayedRecords([newRow, ...displayedRecords]);
+                        setEditingRowId(nextId);
+                        setEditRowData({ ...newRow });
+                        setDataSuccessMsg('เพิ่มแถวข้อมูลใหม่เรียบร้อยแล้ว');
                         setTimeout(() => setDataSuccessMsg(null), 2500);
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md"
+                      className="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>เพิ่มแถวใหม่</span>
                     </button>
-                  </div>
-                </div>
 
-                {dataSuccessMsg && (
-                  <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>{dataSuccessMsg}</span>
-                  </div>
-                )}
+                    {/* Import Excel / CSV */}
+                    <input
+                      ref={adminEditorFileInputRef}
+                      type="file"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={(e) => handleAdminFileUpload(e, 'editor')}
+                      className="hidden"
+                      id="admin-editor-file-upload"
+                    />
+                    <label
+                      htmlFor="admin-editor-file-upload"
+                      className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Upload className={`w-3.5 h-3.5 ${isUploadingSource ? 'animate-spin' : ''}`} />
+                      <span>{isUploadingSource ? 'กำลังนำเข้า...' : 'นำเข้า Excel / CSV'}</span>
+                    </label>
 
-                {/* Search in dataset */}
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <div className="relative flex-1 max-w-xs">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    {/* Save to Cloud Storage */}
+                    <button
+                      onClick={handleSaveCurrentTableToStorage}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="บันทึกตารางนี้เป็นไฟล์ชุดข้อมูลใหม่ใน Storage"
+                    >
+                      <HardDrive className="w-3.5 h-3.5" />
+                      <span>บันทึกลง Cloud Storage</span>
+                    </button>
+
+                    {/* Apply to User Website */}
+                    <button
+                      onClick={() => handleApplyToMainDashboard(displayedRecords, activeDatasetObj ? activeDatasetObj.fileName : 'ชุดข้อมูลปรับแต่ง')}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                      title="นำชุดข้อมูลปัจจุบันนี้ไปแสดงบนแดชบอร์ดของผู้ใช้หน้าบ้านทันที"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>นำไปใช้บนหน้าเว็บหลัก</span>
+                    </button>
+
+                    {/* Export CSV */}
+                    <button
+                      onClick={() => handleExportRecordsCSV(displayedRecords, activeDatasetObj ? activeDatasetObj.fileName.replace(/\.[^/.]+$/, '') : 'sales_data_admin')}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>ส่งออก CSV</span>
+                    </button>
+                  </div>
+
+                  {/* Search in dataset */}
+                  <div className="relative w-56">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="ค้นหาสินค้า ภูมิภาค หมวดหมู่..."
+                      placeholder="ค้นหาสินค้า ภูมิภาค..."
                       value={datasetSearch}
                       onChange={(e) => setDatasetSearch(e.target.value)}
-                      className="w-full bg-[#1b1538] border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500"
+                      className="w-full bg-[#1b1538] border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500"
                     />
                   </div>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    แสดง {currentSalesData.filter(r => !datasetSearch || r.product?.toLowerCase().includes(datasetSearch.toLowerCase()) || r.region?.toLowerCase().includes(datasetSearch.toLowerCase())).slice(0, 50).length} จาก {currentSalesData.length} แถว
-                  </span>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 overflow-x-auto max-h-[450px]">
+                {/* Table */}
+                <div className="rounded-2xl border border-white/10 overflow-x-auto max-h-[480px]">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-[#1b1538] sticky top-0 text-slate-400 font-semibold border-b border-white/10 z-10">
                       <tr>
+                        <th className="py-2.5 px-3">#</th>
                         <th className="py-2.5 px-3">วันที่</th>
                         <th className="py-2.5 px-3">ภูมิภาค</th>
                         <th className="py-2.5 px-3">หมวดหมู่</th>
@@ -2120,150 +2193,157 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 font-mono">
-                      {currentSalesData
+                      {displayedRecords
                         .filter(r => !datasetSearch || r.product?.toLowerCase().includes(datasetSearch.toLowerCase()) || r.region?.toLowerCase().includes(datasetSearch.toLowerCase()) || r.category?.toLowerCase().includes(datasetSearch.toLowerCase()))
-                        .slice(0, 50)
-                        .map((r, i) => (
-                          <tr key={r.id || i} className="hover:bg-white/5 transition">
-                            <td className="py-2 px-3 text-slate-300">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="text"
-                                  value={editRowData.date}
-                                  onChange={(e) => setEditRowData({ ...editRowData, date: e.target.value })}
-                                  className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
-                                />
-                              ) : r.date}
-                            </td>
-                            <td className="py-2 px-3 text-white">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="text"
-                                  value={editRowData.region}
-                                  onChange={(e) => setEditRowData({ ...editRowData, region: e.target.value })}
-                                  className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
-                                />
-                              ) : r.region}
-                            </td>
-                            <td className="py-2 px-3 text-slate-300">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="text"
-                                  value={editRowData.category}
-                                  onChange={(e) => setEditRowData({ ...editRowData, category: e.target.value })}
-                                  className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
-                                />
-                              ) : r.category}
-                            </td>
-                            <td className="py-2 px-3 text-white">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="text"
-                                  value={editRowData.product}
-                                  onChange={(e) => setEditRowData({ ...editRowData, product: e.target.value })}
-                                  className="w-32 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
-                                />
-                              ) : r.product}
-                            </td>
-                            <td className="py-2 px-3 text-right text-emerald-400">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="number"
-                                  value={editRowData.revenue}
-                                  onChange={(e) => {
-                                    const rev = Number(e.target.value) || 0;
-                                    setEditRowData({
-                                      ...editRowData,
-                                      revenue: rev,
-                                      profit: rev - (Number(editRowData.cost) || 0)
-                                    });
-                                  }}
-                                  className="w-20 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-right text-white"
-                                />
-                              ) : `฿${(r.revenue || 0).toLocaleString()}`}
-                            </td>
-                            <td className="py-2 px-3 text-right text-slate-300">
-                              {editingRowIndex === i ? (
-                                <input
-                                  type="number"
-                                  value={editRowData.cost}
-                                  onChange={(e) => {
-                                    const cost = Number(e.target.value) || 0;
-                                    setEditRowData({
-                                      ...editRowData,
-                                      cost: cost,
-                                      profit: (Number(editRowData.revenue) || 0) - cost
-                                    });
-                                  }}
-                                  className="w-20 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-right text-white"
-                                />
-                              ) : `฿${(r.cost || 0).toLocaleString()}`}
-                            </td>
-                            <td className="py-2 px-3 text-right text-violet-300">
-                              ฿{((editingRowIndex === i ? editRowData.profit : r.profit) || 0).toLocaleString()}
-                            </td>
-                            <td className="py-2 px-3 text-center space-x-1.5">
-                              {editingRowIndex === i ? (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      if (onUpdateSalesData) {
-                                        const updated = [...currentSalesData];
-                                        updated[i] = editRowData;
-                                        onUpdateSalesData(updated);
-                                      }
-                                      setEditingRowIndex(null);
-                                      setEditRowData(null);
-                                      setDataSuccessMsg('บันทึกการแก้ไขแถวสำเร็จ');
-                                      setTimeout(() => setDataSuccessMsg(null), 2000);
+                        .slice(0, 80)
+                        .map((r, i) => {
+                          const rowKey = r.id !== undefined && r.id !== null ? r.id : `row-${i}`;
+                          const isEditing = editingRowId === rowKey;
+
+                          return (
+                            <tr key={rowKey} className="hover:bg-white/5 transition">
+                              <td className="py-2 px-3 text-slate-500 font-mono text-[11px]">{i + 1}</td>
+                              <td className="py-2 px-3 text-slate-300">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editRowData.date || ''}
+                                    onChange={(e) => setEditRowData({ ...editRowData, date: e.target.value })}
+                                    className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
+                                  />
+                                ) : (r.date || '-')}
+                              </td>
+                              <td className="py-2 px-3 text-white">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editRowData.region || ''}
+                                    onChange={(e) => setEditRowData({ ...editRowData, region: e.target.value })}
+                                    className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
+                                  />
+                                ) : (r.region || '-')}
+                              </td>
+                              <td className="py-2 px-3 text-slate-300">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editRowData.category || ''}
+                                    onChange={(e) => setEditRowData({ ...editRowData, category: e.target.value })}
+                                    className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
+                                  />
+                                ) : (r.category || '-')}
+                              </td>
+                              <td className="py-2 px-3 text-white">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editRowData.product || ''}
+                                    onChange={(e) => setEditRowData({ ...editRowData, product: e.target.value })}
+                                    className="w-36 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-white"
+                                  />
+                                ) : (r.product || '-')}
+                              </td>
+                              <td className="py-2 px-3 text-right text-emerald-400">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    value={editRowData.revenue ?? 0}
+                                    onChange={(e) => {
+                                      const rev = Number(e.target.value) || 0;
+                                      setEditRowData({
+                                        ...editRowData,
+                                        revenue: rev,
+                                        profit: rev - (Number(editRowData.cost) || 0)
+                                      });
                                     }}
-                                    className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded cursor-pointer"
-                                    title="บันทึก"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setEditingRowIndex(null);
-                                      setEditRowData(null);
+                                    className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-right text-white"
+                                  />
+                                ) : `฿${(r.revenue || 0).toLocaleString()}`}
+                              </td>
+                              <td className="py-2 px-3 text-right text-slate-300">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    value={editRowData.cost ?? 0}
+                                    onChange={(e) => {
+                                      const cost = Number(e.target.value) || 0;
+                                      setEditRowData({
+                                        ...editRowData,
+                                        cost: cost,
+                                        profit: (Number(editRowData.revenue) || 0) - cost
+                                      });
                                     }}
-                                    className="p-1 text-slate-400 hover:bg-white/10 rounded cursor-pointer"
-                                    title="ยกเลิก"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setEditingRowIndex(i);
-                                      setEditRowData({ ...r });
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-violet-300 hover:bg-white/10 rounded cursor-pointer"
-                                    title="แก้ไขแถวนี้"
-                                  >
-                                    <Settings className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      if (confirm(`คุณต้องการลบรายการ "${r.product}" หรือไม่?`)) {
-                                        if (onUpdateSalesData) {
-                                          const filtered = currentSalesData.filter((_, idx) => idx !== i);
-                                          onUpdateSalesData(filtered);
+                                    className="w-24 bg-black/60 border border-violet-500 rounded px-1.5 py-0.5 text-xs text-right text-white"
+                                  />
+                                ) : `฿${(r.cost || 0).toLocaleString()}`}
+                              </td>
+                              <td className="py-2 px-3 text-right text-violet-300 font-bold">
+                                ฿{((isEditing ? editRowData.profit : r.profit) || 0).toLocaleString()}
+                              </td>
+                              <td className="py-2 px-3 text-center space-x-1.5 whitespace-nowrap">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        const updated = displayedRecords.map((item, itemIdx) => {
+                                          const key = item.id !== undefined && item.id !== null ? item.id : `row-${itemIdx}`;
+                                          return key === rowKey ? editRowData : item;
+                                        });
+                                        handleUpdateDisplayedRecords(updated);
+                                        setEditingRowId(null);
+                                        setEditRowData(null);
+                                        setDataSuccessMsg('บันทึกการแก้ไขแถวสำเร็จ');
+                                        setTimeout(() => setDataSuccessMsg(null), 2000);
+                                      }}
+                                      className="p-1 text-emerald-400 hover:bg-emerald-500/20 rounded cursor-pointer"
+                                      title="บันทึก"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingRowId(null);
+                                        setEditRowData(null);
+                                      }}
+                                      className="p-1 text-slate-400 hover:bg-white/10 rounded cursor-pointer"
+                                      title="ยกเลิก"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingRowId(rowKey);
+                                        setEditRowData({ ...r });
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-violet-300 hover:bg-white/10 rounded cursor-pointer"
+                                      title="แก้ไขแถวนี้"
+                                    >
+                                      <Settings className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`คุณต้องการลบรายการ "${r.product}" หรือไม่?`)) {
+                                          const updated = displayedRecords.filter((item, itemIdx) => {
+                                            const key = item.id !== undefined && item.id !== null ? item.id : `row-${itemIdx}`;
+                                            return key !== rowKey;
+                                          });
+                                          handleUpdateDisplayedRecords(updated);
                                         }
-                                      }
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-white/10 rounded cursor-pointer"
-                                    title="ลบแถวนี้"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-400 hover:bg-white/10 rounded cursor-pointer"
+                                      title="ลบแถวนี้"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
