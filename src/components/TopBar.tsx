@@ -416,8 +416,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span>{isPreviewMode ? 'ออกจากการพรีวิว' : 'พรีวิว'}</span>
           </button>
 
-          {/* Admin Platform shortcut strictly in QA Test/Dev mode (e.g. #dev, #test) for admins */}
-          {isTestRoute && currentUser?.role === 'admin' && onOpenDevConsole && (
+          {/* Admin Platform shortcut strictly for users with admin role */}
+          {currentUser?.role === 'admin' && onOpenDevConsole && (
             <button
               id="btn-admin-platform-shortcut"
               onClick={onOpenDevConsole}

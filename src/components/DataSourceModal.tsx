@@ -39,7 +39,7 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
   isOpen,
   onClose,
   currentUser,
-  currentSalesData,
+  currentSalesData = [],
   onSelectDataSource,
 }) => {
   const [dataSources, setDataSources] = useState<DBDataSource[]>([]);
@@ -51,15 +51,14 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchSources = async () => {
-    if (!currentUser) return;
     setIsLoading(true);
     try {
       const dbUser: DBUser = {
-        userId: currentUser.id,
-        email: currentUser.email,
-        name: currentUser.displayName,
-        role: currentUser.role,
-        createdDate: currentUser.createdAt,
+        userId: currentUser?.id || 'usr-default-storage',
+        email: currentUser?.email || 'user@internal',
+        name: currentUser?.displayName || 'ผู้ใช้งาน',
+        role: currentUser?.role || 'editor',
+        createdDate: currentUser?.createdAt || new Date().toISOString(),
       };
       const list = await dbGetDataSources(dbUser);
       setDataSources(list);
@@ -82,7 +81,8 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !currentUser) return;
+    if (!file) return;
+    const effectiveUserId = currentUser?.id || 'usr-default-storage';
 
     setIsUploading(true);
     setErrorMsg(null);
@@ -96,7 +96,7 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
       }
 
       // Save into Database Table DataSources
-      const saved = await dbSaveDataSource(currentUser.id, file.name, parsed.records);
+      const saved = await dbSaveDataSource(effectiveUserId, file.name, parsed.records);
       setDataSources((prev) => [saved, ...prev]);
       setUploadSuccessMsg(`อัปโหลดและจัดเก็บ "${file.name}" เรียบร้อยแล้ว (${parsed.totalRows} แถว)`);
 
@@ -117,11 +117,15 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
   };
 
   const handleSaveCurrentDataset = async () => {
-    if (!currentUser) return;
+    const effectiveUserId = currentUser?.id || 'usr-default-storage';
+    if (!currentSalesData || currentSalesData.length === 0) {
+      setErrorMsg('ไม่มีข้อมูลแถวยอดขายที่จะบันทึก');
+      return;
+    }
     setIsUploading(true);
     try {
-      const title = `ชุดข้อมูลภาพรวม_${new Date().toISOString().split('T')[0]}`;
-      const saved = await dbSaveDataSource(currentUser.id, `${title}.csv`, currentSalesData);
+      const title = `ชุดข้อมูลภาพรวม_${new Date().toISOString().split('T')[0]}_${new Date().toLocaleTimeString('th-TH').replace(/:/g, '-')}`;
+      const saved = await dbSaveDataSource(effectiveUserId, `${title}.csv`, currentSalesData);
       setDataSources((prev) => [saved, ...prev]);
       setUploadSuccessMsg(`บันทึกชุดข้อมูลปัจจุบันลง Storage สำเร็จ (${currentSalesData.length} แถว)`);
     } catch (e: any) {

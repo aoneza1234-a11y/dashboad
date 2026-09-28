@@ -138,19 +138,33 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [activeNav, setActiveNav] = useState('canvas');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  // Domain and Route detection for isolating 3 Environments:
+  // 1. Production User Website (Base root / without any query or path) -> clean, no dev or test buttons!
+  // 2. Admin Backoffice Platform -> accessible via /dev or ?portal=admin or ?portal=dev
+  // 3. QA Test Lab -> accessible via /test or #test or ?portal=test
+  const VERCEL_PROD_DOMAIN = 'dashboad-rose.vercel.app';
+  const SHARED_PROD_DOMAIN = 'ais-pre-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
+  const DEV_TEST_DOMAIN = 'ais-dev-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
+
   const resolveCurrentViewMode = (): 'studio' | 'dev_console' | 'public_viewer' => {
     if (typeof window === 'undefined') return 'studio';
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
 
-    // 1. Explicit Admin request (?portal=admin, /admin, #admin)
+    // 1. Explicit Admin / Dev Backoffice request (/dev, /admin, ?portal=dev, ?portal=admin, #dev)
     const isAdmin =
-      params.get('portal') === 'admin' ||
-      params.get('mode') === 'admin' ||
-      params.get('portal') === 'dev_console' ||
+      path === '/dev' ||
+      path.startsWith('/dev/') ||
       path === '/admin' ||
       path.startsWith('/admin/') ||
+      params.get('portal') === 'dev' ||
+      params.get('portal') === 'admin' ||
+      params.get('mode') === 'dev' ||
+      params.get('mode') === 'admin' ||
+      params.get('portal') === 'dev_console' ||
+      hash === '#dev' ||
+      hash.includes('dev') ||
       hash.includes('admin');
     if (isAdmin) {
       return 'dev_console';
@@ -168,67 +182,23 @@ export default function App() {
       return 'public_viewer';
     }
 
-    // 3. User Portal / Studio request or DEFAULT when URL is cleared/deleted by user!
-    // หากผู้ใช้ลบพารามิเตอร์ของลิงก์ออก จะกลับมาที่หน้าผู้ใช้งาน (Studio) เสมอ และไม่มีทางหลุดเข้าระบบหลังบ้าน
-    const siteConfig = getSiteStatus();
-    if (siteConfig.defaultLandingPortal === 'viewer') {
-      return 'public_viewer';
-    }
+    // 3. Clean User Portal / Studio (Default)
     return 'studio';
   };
 
-  // Domain and Route detection for isolating 3 Environments:
-  // 1. Production User Website (e.g. Vercel: dashboad-rose.vercel.app / ais-pre)
-  // 2. QA Test Lab (ais-dev or /test)
-  // 3. Admin Backoffice Platform (?portal=admin or /admin)
-  const VERCEL_PROD_DOMAIN = 'dashboad-rose.vercel.app';
-  const SHARED_PROD_DOMAIN = 'ais-pre-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
-  const DEV_TEST_DOMAIN = 'ais-dev-aa2zmjdacxdmdrezttgtgd-153425927614.asia-southeast1.run.app';
-
   const checkIsTestEnvironment = (): boolean => {
     if (typeof window === 'undefined') return false;
-    const host = window.location.hostname.toLowerCase();
     const params = new URLSearchParams(window.location.search);
     const path = window.location.pathname.toLowerCase();
     const hash = window.location.hash.toLowerCase();
 
-    // 1. If on Production Domains (Vercel, ais-pre, custom domain) -> NEVER show test features by default
-    if (
-      host.includes('vercel.app') ||
-      host.includes('ais-pre-') ||
-      host.startsWith('app.') ||
-      host.startsWith('bi.')
-    ) {
-      // Strictly isolate production: only activate if explicitly requested via param / route
-      return (
-        params.get('mode') === 'test' ||
-        path === '/test' ||
-        path.startsWith('/test/') ||
-        hash === '#test' ||
-        hash.includes('test')
-      );
-    }
-
-    // 2. If opened on Development / QA Sandbox Domain -> Default to QA Test Lab Mode
-    if (
-      host.includes('ais-dev-') ||
-      host.startsWith('test.') ||
-      host.startsWith('qa.') ||
-      host.startsWith('staging.') ||
-      host.includes('sandbox') ||
-      host.includes('localhost')
-    ) {
-      return params.get('clean') !== 'true' && path !== '/clean';
-    }
-
-    // 3. Explicit path & param checks
+    // Test environment strictly when user navigates to /test or #test or ?portal=test
     return (
-      params.get('mode') === 'test' ||
-      params.get('mode') === 'demo' ||
-      params.get('portal') === 'test' ||
-      params.get('portal') === 'demo' ||
       path === '/test' ||
       path.startsWith('/test/') ||
+      params.get('mode') === 'test' ||
+      params.get('portal') === 'test' ||
+      hash === '#test' ||
       hash.includes('test')
     );
   };
@@ -239,37 +209,39 @@ export default function App() {
   // Team Auth State & RBAC
   const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
-  // Domain & Route navigation between Clean User Portal (Shared App) and QA Test Lab (Dev App)
+  // Domain & Route navigation between:
+  // 1. User Portal (/)
+  // 2. Dev Admin Backoffice (/dev)
+  // 3. QA Test Lab (/test)
   const handleNavigateToTestPortal = () => {
     if (typeof window !== 'undefined') {
-      const currentHost = window.location.hostname.toLowerCase();
-      // If currently on production domain, we can navigate directly to the Dev/QA domain
-      if (currentHost.includes('ais-pre-')) {
-        window.location.href = `https://${DEV_TEST_DOMAIN}`;
-        return;
-      }
       try {
         window.history.pushState({}, '', '/test');
       } catch (e) {
-        window.location.search = '?mode=test';
+        window.location.hash = '#test';
       }
     }
     setIsTestRoute(true);
     setViewMode('studio');
   };
 
+  const handleNavigateToDevAdmin = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({}, '', '/dev');
+      } catch (e) {
+        window.location.hash = '#dev';
+      }
+    }
+    setViewMode('dev_console');
+  };
+
   const handleNavigateToUserPortal = () => {
     if (typeof window !== 'undefined') {
-      const currentHost = window.location.hostname.toLowerCase();
-      // If currently on dev domain, we can navigate directly to the Clean Production domain
-      if (currentHost.includes('ais-dev-')) {
-        window.location.href = `https://${SHARED_PROD_DOMAIN}`;
-        return;
-      }
       try {
         window.history.pushState({}, '', '/');
       } catch (e) {
-        window.location.search = '';
+        window.location.hash = '';
       }
     }
     setIsTestRoute(false);
@@ -277,12 +249,7 @@ export default function App() {
   };
 
   const handleOpenAdminPlatform = () => {
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('portal', 'admin');
-      window.history.pushState({}, '', url.toString());
-    }
-    setViewMode('dev_console');
+    handleNavigateToDevAdmin();
   };
 
   const handleTestQuickSwitchUser = async (email: string) => {
@@ -304,10 +271,12 @@ export default function App() {
     };
 
     window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
     window.addEventListener('team_session_changed', handleSessionUpdate);
     window.addEventListener('admin_auth_changed', handleSessionUpdate);
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
       window.removeEventListener('team_session_changed', handleSessionUpdate);
       window.removeEventListener('admin_auth_changed', handleSessionUpdate);
     };
@@ -986,6 +955,7 @@ export default function App() {
         }}
         currentWidgets={widgets}
         currentSalesData={salesData}
+        onUpdateSalesData={setSalesData}
       />
     );
   }
@@ -1150,6 +1120,7 @@ export default function App() {
             onSwitchUser={handleTestQuickSwitchUser}
             onLogout={handleTeamLogout}
             onNavigateToUserPortal={handleNavigateToUserPortal}
+            onNavigateToDevAdmin={handleNavigateToDevAdmin}
             recordCount={salesData.length}
             widgetCount={widgets.length}
           />
@@ -1321,6 +1292,7 @@ export default function App() {
         isOpen={isDataSourceModalOpen}
         onClose={() => setIsDataSourceModalOpen(false)}
         currentUser={currentTeamUser}
+        currentSalesData={salesData}
         onSelectDataSource={(records, name) => {
           setSalesData(records);
           setConnectionConfig((prev) => ({

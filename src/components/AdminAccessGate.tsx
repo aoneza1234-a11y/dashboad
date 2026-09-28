@@ -156,19 +156,11 @@ export const AdminAccessGate: React.FC<AdminAccessGateProps> = ({
         <div className="mt-5 pt-4 border-t border-white/10 flex flex-col gap-2.5 text-center">
           <button
             type="button"
-            onClick={handleQuickAdminLogin}
-            className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-violet-300 hover:text-white transition cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <span>👑 เข้าสู่ระบบทันทีด้วยบัญชี Owner / Admin</span>
-          </button>
-
-          <button
-            type="button"
             onClick={onBackToUserPortal}
-            className="w-full py-2 rounded-xl bg-transparent hover:bg-white/5 text-xs text-slate-400 hover:text-slate-200 transition cursor-pointer flex items-center justify-center gap-1.5"
+            className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-slate-300 hover:text-white transition cursor-pointer flex items-center justify-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>ไม่ใช่ผู้ดูแลระบบ? คลิกที่นี่เพื่อกลับสู่หน้าเว็บผู้ใช้งาน</span>
+            <span>กลับสู่หน้าเว็บผู้ใช้งาน</span>
           </button>
         </div>
       </div>

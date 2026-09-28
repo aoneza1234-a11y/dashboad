@@ -281,8 +281,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </button>
 
-        {/* Admin Platform / Backoffice - ONLY visible when user is specifically in QA Test/Dev mode (e.g. #dev, #test) AND has admin access */}
-        {isTestRoute && currentUser?.role === 'admin' && onOpenDevConsole && (
+        {/* Admin Platform / Backoffice - ONLY visible when user has admin role */}
+        {currentUser?.role === 'admin' && onOpenDevConsole && (
           <button
             id="nav-admin-platform"
             onClick={onOpenDevConsole}

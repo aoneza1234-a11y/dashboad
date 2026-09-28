@@ -571,6 +571,60 @@ export async function dbCreateStarterDashboardForUser(userId: string, userName: 
 // ----------------------------------------------------
 // 3. Data Sources Database Service (Excel/CSV Storage per User)
 // ----------------------------------------------------
+
+const DS_BACKUP_STORAGE_KEY = 'bi_studio_datasources_backup_v2';
+
+export const INITIAL_DATA_SOURCES: DBDataSource[] = [
+  {
+    dataSourceId: 'ds-starter-enterprise-sales-2026',
+    userId: 'usr-admin-1',
+    fileName: 'ชุดข้อมูลยอดขายรายปี_2026.csv',
+    filePath: 'uploads/usr-admin-1/ชุดข้อมูลยอดขายรายปี_2026.csv',
+    uploadDate: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    recordCount: INITIAL_SALES_RECORDS.length,
+    records: INITIAL_SALES_RECORDS,
+    columns: ['id', 'date', 'orderId', 'product', 'category', 'region', 'quantity', 'revenue', 'cost', 'profit'],
+  },
+  {
+    dataSourceId: 'ds-starter-regional-distribution',
+    userId: 'usr-editor-1',
+    fileName: 'ภาพรวมยอดขายภูมิภาค_Enterprise.xlsx',
+    filePath: 'uploads/usr-editor-1/ภาพรวมยอดขายภูมิภาค_Enterprise.xlsx',
+    uploadDate: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    recordCount: 15,
+    records: INITIAL_SALES_RECORDS.slice(0, 15).map((r, i) => ({
+      ...r,
+      id: i + 1,
+      revenue: Math.round(r.revenue * 1.15),
+      profit: Math.round(r.profit * 1.2),
+    })),
+    columns: ['id', 'date', 'orderId', 'product', 'category', 'region', 'quantity', 'revenue', 'cost', 'profit'],
+  },
+];
+
+function getLocalStorageDataSources(): DBDataSource[] {
+  if (typeof window === 'undefined') return INITIAL_DATA_SOURCES;
+  try {
+    const raw = localStorage.getItem(DS_BACKUP_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(DS_BACKUP_STORAGE_KEY, JSON.stringify(INITIAL_DATA_SOURCES));
+      return INITIAL_DATA_SOURCES;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return INITIAL_DATA_SOURCES;
+  }
+}
+
+function saveLocalStorageDataSources(list: DBDataSource[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DS_BACKUP_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to save to localStorage:', e);
+  }
+}
+
 export async function dbSaveDataSource(
   userId: string,
   fileName: string,
@@ -586,7 +640,7 @@ export async function dbSaveDataSource(
   });
 
   const ds: DBDataSource = {
-    dataSourceId: `ds-${userId}-${Date.now()}`,
+    dataSourceId: `ds-${userId}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     userId,
     fileName,
     filePath: filePath || `uploads/${userId}/${fileName}`,
@@ -599,7 +653,11 @@ export async function dbSaveDataSource(
   // 1. Save to IDB
   await idbPut('dataSources', ds);
 
-  // 2. Save metadata + sample to Firestore (avoid huge payload limit if rows are huge)
+  // 2. Save to localStorage backup
+  const currentLocal = getLocalStorageDataSources();
+  saveLocalStorageDataSources([ds, ...currentLocal.filter((d) => d.dataSourceId !== ds.dataSourceId)]);
+
+  // 3. Save metadata + sample to Firestore with timeout (fail-safe)
   try {
     const cloudPayload = {
       dataSourceId: ds.dataSourceId,
@@ -609,10 +667,9 @@ export async function dbSaveDataSource(
       uploadDate: ds.uploadDate,
       recordCount: ds.recordCount,
       columns: ds.columns,
-      // Store full records or up to 500 in Firestore
       records: records.slice(0, 1000),
     };
-    await setDoc(doc(db, 'dataSources', ds.dataSourceId), cloudPayload);
+    await withTimeout(setDoc(doc(db, 'dataSources', ds.dataSourceId), cloudPayload), 1200);
   } catch (err) {
     console.warn('Firestore data source sync warning (cached locally):', err);
   }
@@ -626,39 +683,58 @@ export async function dbGetDataSources(requestingUser: DBUser): Promise<DBDataSo
     try {
       if (requestingUser.role === 'admin') {
         const q = query(collection(db, 'dataSources'));
-        const snap = await getDocs(q);
+        const snap = await withTimeout(getDocs(q), 1000);
         snap.forEach((d) => cloudSources.push(d.data() as DBDataSource));
       } else {
         const q = query(collection(db, 'dataSources'), where('userId', '==', requestingUser.userId));
-        const snap = await getDocs(q);
+        const snap = await withTimeout(getDocs(q), 1000);
         snap.forEach((d) => cloudSources.push(d.data() as DBDataSource));
       }
       if (cloudSources.length > 0) {
         for (const ds of cloudSources) {
           await idbPut('dataSources', ds);
         }
+        const currentLocal = getLocalStorageDataSources();
+        const merged = [...cloudSources, ...currentLocal.filter(l => !cloudSources.some(c => c.dataSourceId === l.dataSourceId))];
+        saveLocalStorageDataSources(merged);
         return cloudSources.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
       }
     } catch {
-      // Cloud offline
+      // Cloud offline or timed out, seamlessly proceed to IDB & LocalStorage
     }
 
-    const localSources = await idbGetAll<DBDataSource>('dataSources');
+    // 2. IndexedDB query
+    let localSources = await idbGetAll<DBDataSource>('dataSources');
+
+    // 3. Fallback to LocalStorage if IDB empty
+    if (!localSources || localSources.length === 0) {
+      localSources = getLocalStorageDataSources();
+      for (const ds of localSources) {
+        await idbPut('dataSources', ds);
+      }
+    }
+
     if (requestingUser.role === 'admin') {
       return localSources.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
     }
-    return localSources
-      .filter((ds) => ds.userId === requestingUser.userId)
-      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
+
+    const filtered = localSources.filter((ds) => ds.userId === requestingUser.userId || ds.userId === 'usr-admin-1');
+    if (filtered.length === 0) {
+      return localSources.slice(0, 2);
+    }
+    return filtered.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
   } catch {
-    return [];
+    return getLocalStorageDataSources();
   }
 }
 
 export async function dbDeleteDataSource(dataSourceId: string): Promise<void> {
   await idbDelete('dataSources', dataSourceId);
+  const currentLocal = getLocalStorageDataSources();
+  saveLocalStorageDataSources(currentLocal.filter((d) => d.dataSourceId !== dataSourceId));
+
   try {
-    await deleteDoc(doc(db, 'dataSources', dataSourceId));
+    await withTimeout(deleteDoc(doc(db, 'dataSources', dataSourceId)), 1200);
   } catch (err) {
     console.warn('Firestore delete data source error', err);
   }

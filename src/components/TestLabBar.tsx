@@ -19,6 +19,7 @@ interface TestLabBarProps {
   onSwitchUser: (email: string) => Promise<void>;
   onLogout: () => void;
   onNavigateToUserPortal: () => void;
+  onNavigateToDevAdmin?: () => void;
   recordCount: number;
   widgetCount: number;
 }
@@ -28,6 +29,7 @@ export const TestLabBar: React.FC<TestLabBarProps> = ({
   onSwitchUser,
   onLogout,
   onNavigateToUserPortal,
+  onNavigateToDevAdmin,
   recordCount,
   widgetCount,
 }) => {
@@ -146,15 +148,27 @@ export const TestLabBar: React.FC<TestLabBarProps> = ({
           )}
         </div>
 
-        {/* Right: Button to Switch to Clean Production User Portal */}
+        {/* Right: Switch buttons to /dev Admin Platform and Clean / User Portal */}
         <div className="flex items-center gap-2">
+          {onNavigateToDevAdmin && (
+            <button
+              id="btn-goto-dev-admin"
+              onClick={onNavigateToDevAdmin}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-200 font-bold text-xs shadow-md transition transform active:scale-95 cursor-pointer"
+              title="เข้าสู่ระบบหลังบ้าน (/dev) เพื่อมอนิเตอร์และปรับตั้งค่าระบบทั้งหมด"
+            >
+              <Shield className="w-3.5 h-3.5 text-rose-400" />
+              <span>ระบบหลังบ้าน (/dev)</span>
+            </button>
+          )}
+
           <button
             id="btn-goto-user-portal"
             onClick={onNavigateToUserPortal}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition transform active:scale-95 cursor-pointer"
-            title="สลับไปยังโดเมนผู้ใช้งานจริง (Production Domain) - สะอาดตา ไม่มีปุ่มหรือเครื่องมือเทสใดๆ ทั้งสิ้น"
+            title="สลับไปยังเว็บผู้ใช้งานจริง (Production: /) - สะอาดตา ไม่มีปุ่มหรือเครื่องมือเทสใดๆ ทั้งสิ้น"
           >
-            <span>เปิดโดเมนผู้ใช้งานจริง (Prod Domain)</span>
+            <span>เว็บผู้ใช้จริง (Clean /)</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
         </div>
