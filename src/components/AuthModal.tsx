@@ -130,7 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setTimeout(() => {
         notifySuccess(res.user!);
         onClose();
-      }, 600);
+      }, 150);
     } catch (err: any) {
       setErrorMsg(err?.message || 'ลงทะเบียนล้มเหลว');
     } finally {
@@ -454,7 +454,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>กำลังสร้างบัญชีบนคลาวด์...</span>
+                  <span>กำลังจัดเตรียมแดชบอร์ดของคุณ...</span>
                 </>
               ) : (
                 <>

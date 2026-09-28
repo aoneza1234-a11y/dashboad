@@ -249,7 +249,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <span className={`w-1.5 h-1.5 rounded-full ${isSaved ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
                 <span>
                   {isSaved
-                    ? `บันทึกแล้ว${lastSavedAt ? ` (${lastSavedAt})` : ''}`
+                    ? `บันทึกเทมเพลตกราฟแล้ว${lastSavedAt ? ` (${lastSavedAt})` : ''}`
                     : 'กำลังบันทึกอัตโนมัติ...'}
                 </span>
               </div>
@@ -345,12 +345,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                 ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-xs'
                 : 'bg-[#261f4a] hover:bg-[#312860] border-violet-500/40 text-violet-200'
             }`}
-            title="กดเพื่อดึงข้อมูลแถวล่าสุดจาก Google Sheets"
+            title="กดเพื่อดึงข้อมูลแถวล่าสุดแบบเรียลไทม์จาก Google Sheets (กราฟและการ์ดทุกชิ้นจะจำค่าเดิม)"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-500' : 'text-emerald-500'}`}
             />
-            <span>{isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ข้อมูล'}</span>
+            <span>{isSyncing ? 'กำลังดึงสด...' : 'ดึงข้อมูลสด'}</span>
           </button>
 
           {/* Google Sheets Connection Config */}

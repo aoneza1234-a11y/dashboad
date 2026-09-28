@@ -45,8 +45,12 @@ import {
 import { getCurrentUser, logoutTeamUser, loginTeamUserAsync } from './services/teamAuthStore';
 import {
   saveUserDashboard,
+  loadUserDashboard,
   loadUserDashboardFromCloud,
   clearUserDashboardSession,
+  getStarterUserDashboard,
+  getUserSalesDataKey,
+  refreshUserLiveData,
 } from './services/userDashboardStore';
 import { applyGlobalFilters } from './utils/calcEngine';
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from './data/sampleData';
@@ -62,56 +66,34 @@ import {
 } from './services/googleSheets';
 
 export default function App() {
-  // Main Data and Widgets with persistent storage support
-  const [widgets, setWidgets] = useState<VisualWidget[]>(INITIAL_WIDGETS);
-  const [salesData, setSalesData] = useState<SalesRecord[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('bi_studio_sales_data_v2');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to load stored salesData', e);
-      }
-    }
-    return INITIAL_SALES_RECORDS;
-  });
+  // Team Auth State & RBAC first for isolated data loading
+  const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
-  // Automatically persist salesData whenever it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined' && Array.isArray(salesData) && salesData.length > 0) {
-      try {
-        localStorage.setItem('bi_studio_sales_data_v2', JSON.stringify(salesData));
-      } catch (e) {
-        console.warn('Failed to persist salesData', e);
-      }
+  // Bootstrap initial dashboard data specifically for this user
+  const initialUserDash = useMemo(() => {
+    if (currentTeamUser?.id) {
+      return loadUserDashboard(currentTeamUser.id) || getStarterUserDashboard(currentTeamUser);
     }
-  }, [salesData]);
+    return null;
+  }, [currentTeamUser?.id]);
 
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string>('chart-category');
-  const [dashboardTitle, setDashboardTitle] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('bi_studio_dashboard_title_v2');
-      if (stored && stored.trim()) return stored;
-    }
-    return 'ภาพรวมยอดขาย';
-  });
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && dashboardTitle) {
-      try {
-        localStorage.setItem('bi_studio_dashboard_title_v2', dashboardTitle);
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-  }, [dashboardTitle]);
-
+  // Main Data and Widgets with user-isolated persistent storage support
+  const [widgets, setWidgets] = useState<VisualWidget[]>(() => initialUserDash?.widgets || INITIAL_WIDGETS);
+  const [salesData, setSalesData] = useState<SalesRecord[]>(() => initialUserDash?.salesData || INITIAL_SALES_RECORDS);
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string>(() => initialUserDash?.widgets?.[0]?.id || 'chart-category');
+  const [dashboardTitle, setDashboardTitle] = useState<string>(() => initialUserDash?.dashboardTitle || (currentTeamUser ? `แดชบอร์ดของ ${currentTeamUser.displayName}` : 'ภาพรวมยอดขาย'));
   const [isSaved, setIsSaved] = useState(true);
+
+  // Automatically persist user-specific salesData locally
+  useEffect(() => {
+    if (typeof window !== 'undefined' && currentTeamUser?.id && Array.isArray(salesData) && salesData.length > 0) {
+      try {
+        localStorage.setItem(getUserSalesDataKey(currentTeamUser.id), JSON.stringify(salesData));
+      } catch (e) {
+        console.warn('Failed to persist isolated salesData', e);
+      }
+    }
+  }, [salesData, currentTeamUser?.id]);
 
   // Theme State
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>({
@@ -205,9 +187,6 @@ export default function App() {
 
   const [viewMode, setViewMode] = useState<'studio' | 'dev_console' | 'public_viewer'>(resolveCurrentViewMode);
   const [isTestRoute, setIsTestRoute] = useState<boolean>(checkIsTestEnvironment);
-
-  // Team Auth State & RBAC
-  const [currentTeamUser, setCurrentTeamUser] = useState<TeamUser | null>(() => getCurrentUser());
 
   // Domain & Route navigation between:
   // 1. User Portal (/)
@@ -310,15 +289,18 @@ export default function App() {
   // Connection & Sync
   const [isSyncing, setIsSyncing] = useState(false);
   const [connectionConfig, setConnectionConfig] = useState<SheetConnectionConfig>(() => {
-    if (typeof window !== 'undefined') {
+    if (initialUserDash?.connectionConfig) {
+      return initialUserDash.connectionConfig;
+    }
+    if (typeof window !== 'undefined' && currentTeamUser?.id) {
       try {
-        const stored = localStorage.getItem('bi_studio_sheet_config_v2');
+        const stored = localStorage.getItem(`user_sheet_config_${currentTeamUser.id}`);
         if (stored) {
           const parsed = JSON.parse(stored);
           if (parsed && typeof parsed === 'object') return parsed;
         }
       } catch (e) {
-        console.warn('Failed to load sheet config from storage', e);
+        console.warn('Failed to load user sheet config', e);
       }
     }
     return {
@@ -348,14 +330,14 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && connectionConfig) {
+    if (typeof window !== 'undefined' && connectionConfig && currentTeamUser?.id) {
       try {
-        localStorage.setItem('bi_studio_sheet_config_v2', JSON.stringify(connectionConfig));
+        localStorage.setItem(`user_sheet_config_${currentTeamUser.id}`, JSON.stringify(connectionConfig));
       } catch (e) {
         console.warn(e);
       }
     }
-  }, [connectionConfig]);
+  }, [connectionConfig, currentTeamUser?.id]);
 
   // Modals
   const [isDataEditorOpen, setIsDataEditorOpen] = useState(false);
@@ -372,10 +354,117 @@ export default function App() {
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
 
+  // Google Auth State
+  const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Listen to Firebase Auth state
+    const unsubscribe = initAuth(
+      (currentUser, token) => {
+        setUser(currentUser);
+        setAccessToken(token);
+      },
+      () => {
+        setUser(null);
+        setAccessToken(null);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Core User-Isolated Dashboard Loader & Live Sync
+  // กราฟและการ์ดทุกชิ้นจะจำค่าเดิมไว้ ส่วนข้อมูลจะดึงสดแบบเรียลไทม์เมื่อมีชีตเชื่อมต่อ
+  const applyUserDashboard = React.useCallback(
+    (user: TeamUser | null) => {
+      if (!user) {
+        // Reset to clean default state on logout
+        setWidgets(INITIAL_WIDGETS);
+        setSalesData(INITIAL_SALES_RECORDS);
+        setDashboardTitle('ภาพรวมยอดขาย');
+        setFilterState({ regions: [], categories: [], skipBlanks: false, crossFilter: null, customRules: [] });
+        setConnectionConfig({
+          spreadsheetId: '',
+          spreadsheetTitle: 'ยอดขายรายไตรมาส',
+          sheetName: 'ยอดขายรายไตรมาส',
+          availableSheets: ['ยอดขายรายไตรมาส', 'Sheet1'],
+          headerRow: 1,
+          dataStartRow: 2,
+          dataEndRow: null,
+          status: 'connected',
+          lastSyncedAt: null,
+          mode: 'sample',
+          detectedHeaders: ['ลำดับ', 'วันที่', 'เลขที่คำสั่งซื้อ', 'ชื่อสินค้า', 'หมวดหมู่', 'ภูมิภาค', 'จำนวน', 'ยอดขาย (บาท)', 'ต้นทุน (บาท)', 'กำไรขั้นต้น (บาท)'],
+        });
+        setSpacingMode('ปกติ');
+        setHistory([INITIAL_WIDGETS]);
+        setHistoryIndex(0);
+        setSelectedWidgetId(INITIAL_WIDGETS[0]?.id || '');
+        return;
+      }
+
+      // Fast read user's saved template (<2ms)
+      const saved = loadUserDashboard(user.id) || getStarterUserDashboard(user);
+      if (saved.widgets && saved.widgets.length > 0) {
+        setWidgets(saved.widgets);
+        setHistory([saved.widgets]);
+        setHistoryIndex(0);
+        setSelectedWidgetId(saved.widgets[0]?.id || '');
+      }
+      if (saved.salesData && saved.salesData.length > 0) {
+        setSalesData(saved.salesData);
+      } else {
+        setSalesData(INITIAL_SALES_RECORDS);
+      }
+      if (saved.dashboardTitle) {
+        setDashboardTitle(saved.dashboardTitle);
+      }
+      if (saved.themeConfig) {
+        setThemeConfig(saved.themeConfig);
+      }
+      if (saved.filterState) {
+        setFilterState(saved.filterState);
+      }
+      if (saved.connectionConfig) {
+        setConnectionConfig(saved.connectionConfig);
+      }
+      if (saved.spacingMode) {
+        setSpacingMode(saved.spacingMode);
+      }
+      setIsSaved(true);
+      if (saved.lastSavedAt) {
+        setLastSavedTime(saved.lastSavedAt);
+      }
+
+      // Live Real-Time Google Sheets refresh (ดึงข้อมูลแบบเรียลไทม์เมื่อเปิดหรือเมื่อชีทอัปเดต)
+      // กราฟและการ์ดจะจำค่าเดิมไว้ ส่วนข้อมูลจะดึงสดจากชีต!
+      if (saved.connectionConfig && saved.connectionConfig.spreadsheetId) {
+        setIsSyncing(true);
+        refreshUserLiveData(user.id, saved.connectionConfig, accessToken).then((res) => {
+          setIsSyncing(false);
+          if (res.success && res.records && res.records.length > 0) {
+            setSalesData(res.records);
+            if (res.headers && res.headers.length > 0) {
+              setConnectionConfig((prev) => ({
+                ...prev,
+                detectedHeaders: res.headers!,
+                lastSyncedAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+              }));
+            }
+          }
+        }).catch(() => {
+          setIsSyncing(false);
+        });
+      }
+    },
+    [accessToken]
+  );
+
   const handleTeamLogout = () => {
     logoutTeamUser();
     clearUserDashboardSession();
     setCurrentTeamUser(null);
+    applyUserDashboard(null);
     if (viewMode === 'dev_console') {
       setViewMode('studio');
     }
@@ -387,7 +476,7 @@ export default function App() {
       if (!currentTeamUser?.id) return;
       try {
         const timeStr = new Date().toLocaleTimeString('th-TH');
-        await saveUserDashboard(currentTeamUser.id, {
+        saveUserDashboard(currentTeamUser.id, {
           widgets,
           salesData,
           dashboardTitle,
@@ -414,48 +503,16 @@ export default function App() {
     ]
   );
 
-  // Requirement 3 & 9: Auto-load user's dashboard when logging in or refreshing page
+  // Auto-load user's dashboard when logging in or switching account
+  const lastLoadedUserIdRef = React.useRef<string | null>(currentTeamUser?.id || null);
   useEffect(() => {
-    let isMounted = true;
-    if (currentTeamUser?.id) {
-      loadUserDashboardFromCloud(currentTeamUser.id).then((saved) => {
-        if (!isMounted || !saved) return;
-        if (saved.widgets && saved.widgets.length > 0) {
-          setWidgets(saved.widgets);
-          setHistory([saved.widgets]);
-          setHistoryIndex(0);
-          setSelectedWidgetId(saved.widgets[0]?.id || '');
-        }
-        if (saved.salesData && saved.salesData.length > 0) {
-          setSalesData(saved.salesData);
-        }
-        if (saved.dashboardTitle) {
-          setDashboardTitle(saved.dashboardTitle);
-        }
-        if (saved.themeConfig) {
-          setThemeConfig(saved.themeConfig);
-        }
-        if (saved.filterState) {
-          setFilterState(saved.filterState);
-        }
-        if (saved.connectionConfig) {
-          setConnectionConfig(saved.connectionConfig);
-        }
-        if (saved.spacingMode) {
-          setSpacingMode(saved.spacingMode);
-        }
-        setIsSaved(true);
-        if (saved.lastSavedAt) {
-          setLastSavedTime(saved.lastSavedAt);
-        }
-      });
+    if (currentTeamUser?.id !== lastLoadedUserIdRef.current) {
+      lastLoadedUserIdRef.current = currentTeamUser?.id || null;
+      applyUserDashboard(currentTeamUser);
     }
-    return () => {
-      isMounted = false;
-    };
-  }, [currentTeamUser?.id]);
+  }, [currentTeamUser, applyUserDashboard]);
 
-  // Requirement 7: Auto-save every 30 seconds
+  // Requirement 7: Auto-save every 30 seconds (isolated per user)
   useEffect(() => {
     if (!currentTeamUser?.id) return;
     const interval = setInterval(() => {
@@ -504,25 +561,6 @@ export default function App() {
   const [history, setHistory] = useState<VisualWidget[][]>([INITIAL_WIDGETS]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [copiedWidget, setCopiedWidget] = useState<VisualWidget | null>(null);
-
-  // Google Auth State
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Listen to Firebase Auth state
-    const unsubscribe = initAuth(
-      (currentUser, token) => {
-        setUser(currentUser);
-        setAccessToken(token);
-      },
-      () => {
-        setUser(null);
-        setAccessToken(null);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -1394,6 +1432,7 @@ export default function App() {
         }}
         onLoginSuccess={(teamUser) => {
           setCurrentTeamUser(teamUser);
+          applyUserDashboard(teamUser);
           setIsAuthModalOpen(false);
         }}
       />
