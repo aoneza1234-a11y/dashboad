@@ -1,7 +1,102 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import {defineConfig, Plugin} from 'vite';
+
+function dashboardFileStoragePlugin(): Plugin {
+  return {
+    name: 'dashboard-file-storage-plugin',
+    configureServer(server) {
+      server.middlewares.use('/api/user-dashboard', async (req, res) => {
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
+        const storageDir = path.resolve(process.cwd(), 'data/storage/dashboards');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          // GET /api/user-dashboard?userId=...
+          if (req.method === 'GET') {
+            const userId = url.searchParams.get('userId') || 'default_user';
+            const safeId = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const filePath = path.join(storageDir, `dashboard_${safeId}.json`);
+            const isDownload = url.searchParams.get('download') === 'true';
+
+            if (fs.existsSync(filePath)) {
+              const content = fs.readFileSync(filePath, 'utf-8');
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              if (isDownload) {
+                res.setHeader('Content-Disposition', `attachment; filename="dashboard_${safeId}.json"`);
+              }
+              res.end(content);
+              return;
+            }
+
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: false, error: 'Dashboard file not found' }));
+            return;
+          }
+
+          // POST /api/user-dashboard
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => {
+              body += chunk;
+            });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                const userId = parsed.userId || url.searchParams.get('userId') || 'default_user';
+                const safeId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
+                const filePath = path.join(storageDir, `dashboard_${safeId}.json`);
+
+                fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(
+                  JSON.stringify({
+                    success: true,
+                    fileName: `dashboard_${safeId}.json`,
+                    filePath,
+                    sizeBytes: Buffer.byteLength(body, 'utf-8'),
+                    savedAt: new Date().toISOString(),
+                  })
+                );
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
+    },
+  };
+}
 
 function sheetsApiPlugin(): Plugin {
   return {
@@ -93,7 +188,7 @@ function sheetsApiPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), sheetsApiPlugin()],
+    plugins: [react(), tailwindcss(), dashboardFileStoragePlugin(), sheetsApiPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
