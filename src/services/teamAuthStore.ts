@@ -8,6 +8,7 @@ import {
   dbGetCurrentSessionUser,
   DBUser,
   seedInitialDatabase,
+  DEFAULT_USERS,
 } from './cloudDatabase';
 
 const SESSION_STORAGE_KEY = 'bi_studio_current_session_v1';
@@ -32,14 +33,25 @@ function mapDBUserToTeamUser(u: DBUser): TeamUser {
 }
 
 export function getCurrentSessionUser(): TeamUser | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') return mapDBUserToTeamUser(DEFAULT_USERS[0]);
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (err) {
-    return null;
-  }
+    // Explicit logged-out state: do not re-login as default user!
+    if (raw === 'LOGGED_OUT') {
+      return null;
+    }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.id || parsed.userId)) return parsed;
+    }
+  } catch (err) {}
+
+  // First time ever visiting: default to owner user account
+  const defaultUser = mapDBUserToTeamUser(DEFAULT_USERS[0]);
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(defaultUser));
+  } catch (e) {}
+  return defaultUser;
 }
 
 export const getCurrentUser = getCurrentSessionUser;
@@ -59,7 +71,7 @@ export function setCurrentSessionUser(user: TeamUser | null): void {
         createdDate: user.createdAt,
       });
     } else {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.setItem(SESSION_STORAGE_KEY, 'LOGGED_OUT');
       dbSetCurrentSessionUser(null);
     }
     window.dispatchEvent(new CustomEvent('team_session_changed', { detail: user }));

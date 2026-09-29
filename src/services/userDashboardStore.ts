@@ -57,11 +57,8 @@ export function loadUserDashboard(userId: string): UserDashboardData | null {
     if (!raw) {
       raw = localStorage.getItem(`user_dashboard_${userId.trim().toLowerCase()}`);
     }
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
 
     // Retrieve user-specific isolated sales data
-    let sales = parsed.salesData;
     const salesKey = getUserSalesDataKey(userId);
     let rawSales = localStorage.getItem(salesKey);
     if (!rawSales) {
@@ -70,6 +67,15 @@ export function loadUserDashboard(userId: string): UserDashboardData | null {
     if (!rawSales) {
       rawSales = localStorage.getItem(`user_sales_data_${userId.trim().toLowerCase()}`);
     }
+
+    let parsed: any = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {}
+    }
+
+    let sales: SalesRecord[] = [];
     if (rawSales) {
       try {
         const parsedSales = JSON.parse(rawSales);
@@ -77,6 +83,10 @@ export function loadUserDashboard(userId: string): UserDashboardData | null {
           sales = parsedSales;
         }
       } catch (e) {}
+    }
+
+    if (parsed && (!sales || sales.length === 0) && Array.isArray(parsed.salesData) && parsed.salesData.length > 0) {
+      sales = parsed.salesData;
     }
 
     if (!Array.isArray(sales) || sales.length === 0) {
@@ -89,6 +99,7 @@ export function loadUserDashboard(userId: string): UserDashboardData | null {
         salesData: sales,
       };
     }
+
     return null;
   } catch (e) {
     console.error('Failed to load user dashboard from fast cache', e);
@@ -269,7 +280,7 @@ export function saveUserDashboard(
     dashboardName: data.dashboardTitle,
     dashboardConfig: {
       widgets: data.widgets,
-      salesData: (data.salesData || []).slice(0, 5), // Store minimal lean sample in cloud document to prevent payload bloat
+      salesData: (data.salesData || []).slice(0, 500), // Store complete records in cloud document for full fidelity charts
       themeConfig: data.themeConfig,
       filterState: data.filterState,
       connectionConfig: data.connectionConfig,

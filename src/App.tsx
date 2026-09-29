@@ -97,7 +97,7 @@ export default function App() {
   }, [salesData, currentTeamUser?.id]);
 
   // Theme State
-  const [themeConfig, setThemeConfig] = useState<ThemeConfig>({
+  const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => initialUserDash?.themeConfig || {
     preset: 'violet',
     primaryColor: '#7c3aed',
     fontFamily: 'Prompt',
@@ -260,8 +260,13 @@ export default function App() {
       setIsTestRoute(checkIsTestEnvironment());
     };
 
-    const handleSessionUpdate = () => {
-      setCurrentTeamUser(getCurrentUser());
+    const handleSessionUpdate = (e?: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent && customEvent.detail !== undefined) {
+        setCurrentTeamUser(customEvent.detail);
+      } else {
+        setCurrentTeamUser(getCurrentUser());
+      }
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -292,14 +297,14 @@ export default function App() {
     };
   }, []);
 
-  const [filterState, setFilterState] = useState<FilterState>({
+  const [filterState, setFilterState] = useState<FilterState>(() => initialUserDash?.filterState || {
     regions: [],
     categories: [],
     skipBlanks: false,
     crossFilter: null,
     customRules: [],
   });
-  const [spacingMode, setSpacingMode] = useState<string>('ปกติ');
+  const [spacingMode, setSpacingMode] = useState<string>(() => initialUserDash?.spacingMode || 'ปกติ');
 
   // Connection & Sync
   const [isSyncing, setIsSyncing] = useState(false);
@@ -390,7 +395,7 @@ export default function App() {
 
   // Core User-Isolated Dashboard Loader & Live Sync
   // กราฟและการ์ดทุกชิ้นจะจำค่าเดิมไว้ ข้อมูลไม่หายเมื่อล็อกอินเข้าออก
-  const isPopulatingUserDataRef = React.useRef(false);
+  const isPopulatingUserDataRef = React.useRef(true);
 
   const applyDashboardData = React.useCallback(
     (data: UserDashboardData) => {
@@ -429,7 +434,7 @@ export default function App() {
       // Unlock after state flush
       setTimeout(() => {
         isPopulatingUserDataRef.current = false;
-      }, 150);
+      }, 300);
     },
     []
   );
@@ -457,6 +462,14 @@ export default function App() {
           detectedHeaders: ['ลำดับ', 'วันที่', 'เลขที่คำสั่งซื้อ', 'ชื่อสินค้า', 'หมวดหมู่', 'ภูมิภาค', 'จำนวน', 'ยอดขาย (บาท)', 'ต้นทุน (บาท)', 'กำไรขั้นต้น (บาท)'],
         });
         setSpacingMode('ปกติ');
+        setThemeConfig({
+          preset: 'violet',
+          primaryColor: '#7c3aed',
+          fontFamily: 'Prompt',
+          borderRadius: 'rounded-lg',
+          shadowStyle: 'shadow-sm',
+          density: 'comfortable',
+        });
         setHistory([INITIAL_WIDGETS]);
         setHistoryIndex(0);
         setSelectedWidgetId(INITIAL_WIDGETS[0]?.id || '');
@@ -533,6 +546,7 @@ export default function App() {
     clearUserDashboardSession();
     setCurrentTeamUser(null);
     applyUserDashboard(null);
+    setIsAuthModalOpen(true);
     if (viewMode === 'dev_console') {
       setViewMode('studio');
     }
@@ -571,6 +585,32 @@ export default function App() {
     ]
   );
 
+  // Mount effect: verify background cloud sync if needed, and unlock auto-save
+  useEffect(() => {
+    let isMounted = true;
+    if (currentTeamUser?.id) {
+      loadUserDashboardFromCloud(currentTeamUser.id)
+        .then((cloudData) => {
+          if (isMounted && cloudData && (!initialUserDash || !initialUserDash.widgets || initialUserDash.widgets.length === 0)) {
+            applyDashboardData(cloudData);
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setTimeout(() => {
+              isPopulatingUserDataRef.current = false;
+            }, 300);
+          }
+        });
+    } else {
+      isPopulatingUserDataRef.current = false;
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Auto-load user's dashboard when logging in or switching account
   const lastLoadedUserIdRef = React.useRef<string | null>(currentTeamUser?.id || null);
   useEffect(() => {
@@ -578,27 +618,31 @@ export default function App() {
       lastLoadedUserIdRef.current = currentTeamUser?.id || null;
       applyUserDashboard(currentTeamUser);
     }
-  }, [currentTeamUser, applyUserDashboard]);
+  }, [currentTeamUser?.id, applyUserDashboard]);
 
-  // Immediate Auto-Save upon any change (instant local-first, zero data loss!)
+  // Debounced Auto-Save upon any change (instant local-first, zero data loss!)
   useEffect(() => {
     if (!currentTeamUser?.id || isPopulatingUserDataRef.current) return;
-    try {
-      const timeStr = new Date().toLocaleTimeString('th-TH');
-      saveUserDashboard(currentTeamUser.id, {
-        widgets,
-        salesData,
-        dashboardTitle,
-        themeConfig,
-        filterState,
-        connectionConfig,
-        spacingMode,
-      });
-      setIsSaved(true);
-      setLastSavedTime(timeStr);
-    } catch (e) {
-      console.warn('Auto-save error', e);
-    }
+    const timer = setTimeout(() => {
+      try {
+        const timeStr = new Date().toLocaleTimeString('th-TH');
+        saveUserDashboard(currentTeamUser.id, {
+          widgets,
+          salesData,
+          dashboardTitle,
+          themeConfig,
+          filterState,
+          connectionConfig,
+          spacingMode,
+        });
+        setIsSaved(true);
+        setLastSavedTime(timeStr);
+      } catch (e) {
+        console.warn('Auto-save error', e);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
   }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode, currentTeamUser?.id]);
 
   const handleAdoptTemplate = (template: DashboardTemplate) => {

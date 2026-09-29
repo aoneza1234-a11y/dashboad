@@ -23,8 +23,29 @@ import {
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from '../data/sampleData';
 
 // Initialize Firebase App & Firestore
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+let dbInstance: any = null;
+try {
+  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  dbInstance = getFirestore(app);
+} catch (e) {
+  console.warn('Firebase init notice:', e);
+}
+export const db = dbInstance;
+
+export let isFirestoreAvailable = true;
+
+export function disableFirestoreIfMissing(err: any): void {
+  const msg = (err?.message || String(err) || '').toLowerCase();
+  if (
+    msg.includes('database') ||
+    msg.includes('not found') ||
+    msg.includes('not-found') ||
+    msg.includes('project configuration') ||
+    err?.code === 'not-found'
+  ) {
+    isFirestoreAvailable = false;
+  }
+}
 
 // Helper with timeout to prevent hanging when Firestore network is slow/unreachable
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 1500, fallbackVal?: T): Promise<T> {
@@ -44,6 +65,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 1500, fallbackV
       })
       .catch((err) => {
         clearTimeout(timer);
+        disableFirestoreIfMissing(err);
         if (fallbackVal !== undefined) {
           resolve(fallbackVal);
         } else {
@@ -190,6 +212,16 @@ async function idbDelete(storeName: string, key: string): Promise<void> {
 // ----------------------------------------------------
 export const DEFAULT_USERS: DBUser[] = [
   {
+    userId: 'usr-admin-primary',
+    email: 'aoneza1234@gmail.com',
+    password: 'password123',
+    name: 'Thirawat (เจ้าของระบบ)',
+    role: 'admin',
+    department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
+    createdDate: '2026-01-01T00:00:00.000Z',
+    lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
+  },
+  {
     userId: 'usr-admin-1',
     email: 'aoneza953@gmail.com',
     password: 'password123',
@@ -227,20 +259,22 @@ export async function seedInitialDatabase(): Promise<void> {
   if (hasSeeded) return;
   hasSeeded = true;
   try {
+    // 1. Seed IndexedDB locally
     for (const u of DEFAULT_USERS) {
       await idbPut('users', u);
-      // Attempt non-blocking syncing to Firestore
+    }
+    // 2. Attempt non-blocking syncing to Firestore only if available
+    if (isFirestoreAvailable && db) {
       try {
-        const uDoc = doc(db, 'users', u.userId);
-        withTimeout(getDoc(uDoc), 800)
-          .then((snap) => {
-            if (snap && !snap.exists()) {
-              setDoc(uDoc, u).catch(() => {});
-            }
-          })
-          .catch(() => {});
+        const uDoc = doc(db, 'users', DEFAULT_USERS[0].userId);
+        const snap = await withTimeout(getDoc(uDoc), 800);
+        if (snap && !snap.exists()) {
+          for (const u of DEFAULT_USERS) {
+            setDoc(doc(db, 'users', u.userId), u).catch(() => {});
+          }
+        }
       } catch (err) {
-        // Fallback to local IDB if offline
+        disableFirestoreIfMissing(err);
       }
     }
   } catch (err) {
