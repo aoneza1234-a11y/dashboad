@@ -109,22 +109,49 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     return list;
   };
 
+  // Dynamically extract all unique columns present in the dataset and availableColumns
+  const dynamicColumns = useMemo(() => {
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    const addCol = (c: string) => {
+      if (!c || c === 'id' || c.startsWith('__')) return;
+      const clean = c.trim();
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        list.push(clean);
+      }
+    };
+
+    // 1. First add columns from salesData rows
+    if (salesData && salesData.length > 0) {
+      salesData.forEach((row) => {
+        if (row && typeof row === 'object') {
+          Object.keys(row).forEach(addCol);
+        }
+      });
+    }
+
+    // 2. Add availableColumns
+    if (availableColumns && availableColumns.length > 0) {
+      availableColumns.forEach(addCol);
+    }
+
+    // 3. Fallbacks if empty
+    if (list.length === 0) {
+      ['region', 'category', 'product', 'channel', 'date', 'revenue', 'cost', 'profit', 'quantity'].forEach(addCol);
+    }
+
+    return list;
+  }, [salesData, availableColumns]);
+
   // Compute baseline distinct values and counts for each column
   const columnDistinctValues = useMemo(() => {
     const map: Record<string, { value: string; count: number }[]> = {};
     if (!salesData || salesData.length === 0) return map;
 
-    // Collect all column keys
-    const allCols = new Set<string>([
-      'region',
-      'category',
-      'product',
-      'channel',
-      'date',
-      ...availableColumns,
-    ]);
-
-    allCols.forEach((col) => {
+    dynamicColumns.forEach((col) => {
       const counts: Record<string, number> = {};
       salesData.forEach((row) => {
         const val = getRecordValue(row, col);
@@ -141,14 +168,13 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     });
 
     return map;
-  }, [salesData, availableColumns]);
+  }, [salesData, dynamicColumns]);
 
   // Add a new filter slot
   const handleAddNewSlot = (defaultCol?: string) => {
-    const defaultAvailable = ['region', 'category', 'product', 'channel', 'date', ...availableColumns];
     const existingCols = rules.map((r) => r.column);
     const candidate =
-      defaultCol || defaultAvailable.find((c) => !existingCols.includes(c)) || 'region';
+      defaultCol || dynamicColumns.find((c) => !existingCols.includes(c)) || dynamicColumns[0] || 'region';
 
     const newRule: ActiveFilterRule = {
       id: `rule-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -315,51 +341,11 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
                     isDark ? 'text-violet-300' : 'text-violet-700'
                   }`}
                 >
-                  <option value="region" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    ภูมิภาค
-                  </option>
-                  <option value="category" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    หมวดหมู่
-                  </option>
-                  <option value="product" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    สินค้า
-                  </option>
-                  <option value="channel" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    ช่องทางจำหน่าย
-                  </option>
-                  <option value="date" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    วันที่
-                  </option>
-                  <option value="revenue" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    ยอดขาย
-                  </option>
-                  <option value="profit" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    กำไร
-                  </option>
-                  <option value="quantity" className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                    จำนวน
-                  </option>
-                  {availableColumns
-                    .filter(
-                      (c) =>
-                        ![
-                          'region',
-                          'category',
-                          'product',
-                          'channel',
-                          'date',
-                          'revenue',
-                          'profit',
-                          'quantity',
-                          'orderId',
-                          'id',
-                        ].includes(c)
-                    )
-                    .map((c) => (
-                      <option key={c} value={c} className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
-                        {getColLabel(c)}
-                      </option>
-                    ))}
+                  {dynamicColumns.map((col) => (
+                    <option key={col} value={col} className={isDark ? 'bg-[#1b1633] text-white' : 'bg-white'}>
+                      {getColLabel(col)}
+                    </option>
+                  ))}
                 </select>
 
                 {/* Dropdown Trigger Button */}

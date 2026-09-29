@@ -123,16 +123,21 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
     return aggregateForWidget(widgetRecords, widget, currentPalette);
   }, [widgetRecords, widget, currentPalette]);
 
+  // Check if any filter rule specifies count_distinct on a column (e.g. Count B under condition C)
+  const countDistinctRule = widget.filterRules?.find((r) => r.operator === 'count_distinct');
+
   // Total metric for KPI
   const kpiValue = React.useMemo(() => {
     if (widget.hidden) return 0;
+    const targetMetric = countDistinctRule?.column || widget.metric || 'revenue';
+    const targetAgg = countDistinctRule ? 'count_distinct' : (widget.aggregation || 'sum');
     return calculateMetricValue(
       widgetRecords,
-      widget.metric || 'revenue',
-      widget.aggregation || 'sum',
+      targetMetric,
+      targetAgg,
       widget.skipBlanks ?? false
     );
-  }, [widgetRecords, widget]);
+  }, [widgetRecords, widget, countDistinctRule]);
 
   // Trend % comparison for KPI (comparing recent vs earlier records, or partitioned by trendCompareColumn)
   const trendInfo = React.useMemo(() => {
@@ -261,6 +266,9 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
     }
     if (widget.subtitle) {
       return widget.subtitle;
+    }
+    if (countDistinctRule?.column) {
+      return `นับจำนวนไม่ซ้ำ (${countDistinctRule.column})`;
     }
     switch (widget.aggregation) {
       case 'count_distinct':

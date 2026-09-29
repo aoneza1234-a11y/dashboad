@@ -95,50 +95,69 @@ export function applyRecordFilters(
   }
 
   if (widget?.filterRules && widget.filterRules.length > 0) {
-    filtered = filtered.filter((r) => {
-      return widget.filterRules!.every((rule) => {
-        if (!rule.column) return true;
-        const val = getRecordValue(r, rule.column);
+    // 1. First apply all standard condition filters (e.g. Condition C: equals, greater, not_blank, contains)
+    const conditionRules = widget.filterRules.filter((r) => r.operator !== 'count_distinct');
+    if (conditionRules.length > 0) {
+      filtered = filtered.filter((r) => {
+        return conditionRules.every((rule) => {
+          if (!rule.column) return true;
+          const val = getRecordValue(r, rule.column);
 
-        if (rule.operator === 'is_blank') return isBlankValue(val);
-        if (rule.operator === 'not_blank') return !isBlankValue(val);
-        if (rule.operator === 'count_distinct') return true;
+          if (rule.operator === 'is_blank') return isBlankValue(val);
+          if (rule.operator === 'not_blank') return !isBlankValue(val);
 
-        if (rule.value === undefined || rule.value === null || String(rule.value).trim() === '') {
-          return true;
-        }
+          if (rule.value === undefined || rule.value === null || String(rule.value).trim() === '') {
+            return true;
+          }
 
-        const strVal = String(val ?? '').trim().toLowerCase();
-        const strTarget = String(rule.value).trim().toLowerCase();
-        const isStrictNumber =
-          (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.trim())))) &&
-          !isNaN(Number(String(rule.value).trim()));
-        const numVal = isStrictNumber ? parseCleanNumber(val) : NaN;
-        const numTarget = isStrictNumber ? parseCleanNumber(rule.value) : NaN;
-        const isNumericComparison = isStrictNumber && !isNaN(numVal) && !isNaN(numTarget);
+          const strVal = String(val ?? '').trim().toLowerCase();
+          const strTarget = String(rule.value).trim().toLowerCase();
+          const isStrictNumber =
+            (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.trim())))) &&
+            !isNaN(Number(String(rule.value).trim()));
+          const numVal = isStrictNumber ? parseCleanNumber(val) : NaN;
+          const numTarget = isStrictNumber ? parseCleanNumber(rule.value) : NaN;
+          const isNumericComparison = isStrictNumber && !isNaN(numVal) && !isNaN(numTarget);
 
-        switch (rule.operator) {
-          case 'equals':
-            return strVal === strTarget || (isNumericComparison && numVal === numTarget);
-          case 'not_equals':
-            return strVal !== strTarget && (!isNumericComparison || numVal !== numTarget);
-          case 'contains':
-            return strVal.includes(strTarget);
-          case 'starts_with':
-            return strVal.startsWith(strTarget);
-          case 'greater':
-            return isNumericComparison ? numVal > numTarget : strVal > strTarget;
-          case 'greater_equal':
-            return isNumericComparison ? numVal >= numTarget : strVal >= strTarget;
-          case 'less':
-            return isNumericComparison ? numVal < numTarget : strVal < strTarget;
-          case 'less_equal':
-            return isNumericComparison ? numVal <= numTarget : strVal <= strTarget;
-          default:
-            return strVal === strTarget;
-        }
+          switch (rule.operator) {
+            case 'equals':
+              return strVal === strTarget || (isNumericComparison && numVal === numTarget);
+            case 'not_equals':
+              return strVal !== strTarget && (!isNumericComparison || numVal !== numTarget);
+            case 'contains':
+              return strVal.includes(strTarget);
+            case 'starts_with':
+              return strVal.startsWith(strTarget);
+            case 'greater':
+              return isNumericComparison ? numVal > numTarget : strVal > strTarget;
+            case 'greater_equal':
+              return isNumericComparison ? numVal >= numTarget : strVal >= strTarget;
+            case 'less':
+              return isNumericComparison ? numVal < numTarget : strVal < strTarget;
+            case 'less_equal':
+              return isNumericComparison ? numVal <= numTarget : strVal <= strTarget;
+            default:
+              return strVal === strTarget;
+          }
+        });
       });
-    });
+    }
+
+    // 2. Next apply count_distinct (deduplicate records by Column B so downstream counting is distinct)
+    const countDistinctRules = widget.filterRules.filter((r) => r.operator === 'count_distinct');
+    if (countDistinctRules.length > 0) {
+      countDistinctRules.forEach((rule) => {
+        if (!rule.column) return;
+        const seen = new Set<string>();
+        filtered = filtered.filter((r) => {
+          const val = getRecordValue(r, rule.column);
+          const key = String(val ?? '').trim().toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      });
+    }
   }
 
   return filtered;
@@ -369,8 +388,9 @@ export function aggregateForWidget(
     dimKey = widget.drillLevels[levelIdx] || dimKey;
   }
 
-  const metricKey = widget.metric || 'revenue';
-  const agg = widget.aggregation || 'sum';
+  const countDistinctRule = widget.filterRules?.find((r) => r.operator === 'count_distinct');
+  const metricKey = countDistinctRule ? countDistinctRule.column : (widget.metric || 'revenue');
+  const agg = countDistinctRule ? 'count_distinct' : (widget.aggregation || 'sum');
   const skipBlanks = widget.skipBlanks ?? false;
 
   // Group by dimension
