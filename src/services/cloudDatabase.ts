@@ -292,7 +292,7 @@ export async function seedInitialDatabase(): Promise<void> {
   }
 }
 
-// Register User (Instant Local-First with Background Cloud Sync)
+// Register User (Instant Local-First with Server Persistent Sync)
 export async function dbRegisterUser(
   name: string,
   email: string,
@@ -301,7 +301,7 @@ export async function dbRegisterUser(
 ): Promise<{ success: boolean; user?: DBUser; error?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    
+
     // Check if user exists in local cache or IDB immediately (<2ms)
     const allUsers = await dbGetAllUsers();
     if (allUsers.some((u) => u.email.toLowerCase() === normalizedEmail)) {
@@ -319,10 +319,21 @@ export async function dbRegisterUser(
       lastLoginAt: 'เพิ่งสมัคร',
     };
 
-    // 1. Save to IDB immediately
+    // 1. Save to Server File System API (/api/users)
+    try {
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser),
+      });
+    } catch (serverErr) {
+      console.warn('Server user sync warning', serverErr);
+    }
+
+    // 2. Save to IDB immediately
     await idbPut('users', newUser);
 
-    // 2. Save to localStorage immediately
+    // 3. Save to localStorage immediately
     if (typeof window !== 'undefined') {
       try {
         const teamUsersRaw = localStorage.getItem('bi_studio_team_users_v2');
@@ -347,10 +358,10 @@ export async function dbRegisterUser(
       } catch (e) {}
     }
 
-    // 3. Set as active session immediately
+    // 4. Set as active session immediately
     await dbSetCurrentSessionUser(newUser);
 
-    // 4. Create isolated starter dashboard for this new user in local cache immediately
+    // 5. Create isolated starter dashboard for this new user in local cache immediately
     const starterDashboard: DBDashboard = {
       dashboardId: `dash-${newUser.userId}-starter`,
       userId: newUser.userId,
@@ -386,21 +397,23 @@ export async function dbRegisterUser(
       } catch (e) {}
     }
 
-    // 5. Non-blocking fire-and-forget sync to Firestore (does NOT make user wait)
-    withTimeout(setDoc(doc(db, 'users', newUser.userId), sanitizeForFirestore(newUser)), 800).catch((err) => {
-      console.warn('Background Firestore user sync notice:', err);
-    });
+    // 6. Non-blocking fire-and-forget sync to Firestore if available
+    if (isFirestoreAvailable && db) {
+      withTimeout(setDoc(doc(db, 'users', newUser.userId), sanitizeForFirestore(newUser)), 800).catch((err) => {
+        disableFirestoreIfMissing(err);
+      });
 
-    const lightDashboard = {
-      ...starterDashboard,
-      dashboardConfig: {
-        ...starterDashboard.dashboardConfig,
-        salesData: [],
-      },
-    };
-    withTimeout(setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), sanitizeForFirestore(lightDashboard)), 800).catch((err) => {
-      console.warn('Background Firestore starter dashboard notice:', err);
-    });
+      const lightDashboard = {
+        ...starterDashboard,
+        dashboardConfig: {
+          ...starterDashboard.dashboardConfig,
+          salesData: [],
+        },
+      };
+      withTimeout(setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), sanitizeForFirestore(lightDashboard)), 800).catch((err) => {
+        disableFirestoreIfMissing(err);
+      });
+    }
 
     return { success: true, user: newUser };
   } catch (error: any) {
@@ -408,15 +421,35 @@ export async function dbRegisterUser(
   }
 }
 
-// Login User (Instant Local Match with Non-blocking Cloud Verification)
+// Login User (Instant Server Match with Local Fallback)
 export async function dbLoginUser(
   email: string,
   password?: string
 ): Promise<{ success: boolean; user?: DBUser; error?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    
-    // 1. Check local IDB and localStorage first (<5ms)
+
+    // 1. Try Server API first so accounts work seamlessly across devices
+    try {
+      const serverRes = await fetch('/api/users?action=login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password }),
+      });
+      if (serverRes.ok) {
+        const data = await serverRes.json();
+        if (data.success && data.user) {
+          const user = data.user as DBUser;
+          await idbPut('users', user);
+          await dbSetCurrentSessionUser(user);
+          return { success: true, user };
+        }
+      }
+    } catch {
+      // Server network timeout or offline - seamlessly proceed to local check
+    }
+
+    // 2. Check local IDB and localStorage fallback (<5ms)
     let allUsers = await idbGetAll<DBUser>('users');
     if (!allUsers || allUsers.length === 0) {
       if (typeof window !== 'undefined') {
@@ -442,8 +475,8 @@ export async function dbLoginUser(
 
     let found = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
 
-    // If not found locally, fast query Firestore with strict 800ms timeout
-    if (!found) {
+    // If not found locally, try Firestore with strict timeout if available
+    if (!found && isFirestoreAvailable && db) {
       try {
         const snap = await withTimeout(
           getDocs(query(collection(db, 'users'), where('email', '==', normalizedEmail))),
@@ -453,7 +486,9 @@ export async function dbLoginUser(
           found = snap.docs[0].data() as DBUser;
           idbPut('users', found);
         }
-      } catch (e) {}
+      } catch (e) {
+        disableFirestoreIfMissing(e);
+      }
     }
 
     if (!found) {
@@ -481,8 +516,17 @@ export async function dbLoginUser(
     await idbPut('users', updated);
     await dbSetCurrentSessionUser(updated);
 
-    // Non-blocking Firestore update
-    withTimeout(setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore(updated), { merge: true }), 1000).catch(() => {});
+    // Sync to Server API
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    }).catch(() => {});
+
+    // Non-blocking Firestore update if available
+    if (isFirestoreAvailable && db) {
+      withTimeout(setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore(updated), { merge: true }), 1000).catch(() => {});
+    }
 
     return { success: true, user: updated };
   } catch (error: any) {
@@ -497,6 +541,16 @@ export async function dbResetPassword(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Sync to server
+    try {
+      await fetch('/api/users?action=reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, newPassword }),
+      });
+    } catch {}
+
     const allUsers = await dbGetAllUsers();
     const found = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
     if (!found) {
@@ -508,10 +562,12 @@ export async function dbResetPassword(
       password: newPassword,
     };
     await idbPut('users', updated);
-    try {
-      await setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore({ password: newPassword }), { merge: true });
-    } catch {
-      // Offline fallback
+    if (isFirestoreAvailable && db) {
+      try {
+        await setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore({ password: newPassword }), { merge: true });
+      } catch (e) {
+        disableFirestoreIfMissing(e);
+      }
     }
     return { success: true };
   } catch (error: any) {
@@ -519,26 +575,48 @@ export async function dbResetPassword(
   }
 }
 
-// Get all users (Local IDB First for instant login, then syncs Firestore in background)
+// Get all users (Server API First -> IDB -> LocalStorage -> Default)
 export async function dbGetAllUsers(): Promise<DBUser[]> {
   try {
-    // 1. Check local IDB first for instant <5ms response
+    // 1. Try Server API first so all devices see the same users
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const serverUsers = await res.json();
+        if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+          for (const u of serverUsers) {
+            await idbPut('users', u);
+          }
+          if (typeof window !== 'undefined') {
+            const mapped = serverUsers.map((u: DBUser) => ({
+              id: u.userId,
+              name: u.name,
+              displayName: u.name,
+              email: u.email,
+              role: u.role,
+              status: 'active',
+              department: u.department,
+              createdAt: u.createdDate.split('T')[0],
+              lastLoginAt: u.lastLoginAt,
+              assignedTemplateIds: ['tpl-1'],
+              password: u.password,
+            }));
+            localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(mapped));
+          }
+          return serverUsers;
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    // 2. Check local IDB first for instant <5ms response
     const localUsers = await idbGetAll<DBUser>('users');
     if (localUsers && localUsers.length > 0) {
-      // Non-blocking fire-and-forget sync from Firestore with timeout
-      withTimeout(getDocs(query(collection(db, 'users'))), 800)
-        .then((snap) => {
-          if (snap && !snap.empty) {
-            snap.forEach((d) => {
-              idbPut('users', d.data() as DBUser);
-            });
-          }
-        })
-        .catch(() => {});
       return localUsers;
     }
 
-    // 2. Check localStorage backup immediately before touching network (<1ms)
+    // 3. Check localStorage backup immediately before touching network (<1ms)
     if (typeof window !== 'undefined') {
       const raw = localStorage.getItem('bi_studio_team_users_v2');
       if (raw) {
@@ -562,23 +640,6 @@ export async function dbGetAllUsers(): Promise<DBUser[]> {
           }
         } catch (e) {}
       }
-    }
-
-    // 3. If local is empty, try Firestore with a strict 800ms timeout
-    try {
-      const snap = await withTimeout(getDocs(query(collection(db, 'users'))), 800);
-      if (snap && !snap.empty) {
-        const cloudUsers: DBUser[] = [];
-        snap.forEach((d) => {
-          cloudUsers.push(d.data() as DBUser);
-        });
-        for (const u of cloudUsers) {
-          await idbPut('users', u);
-        }
-        return cloudUsers;
-      }
-    } catch {
-      // Cloud timeout or offline
     }
 
     // 4. Fallback to default users

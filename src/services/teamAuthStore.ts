@@ -248,6 +248,22 @@ export function saveTeamUsers(users: TeamUser[]): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
+    // Non-blocking sync to server API so changes persist across devices
+    for (const u of users) {
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: u.id,
+          name: u.displayName || u.name,
+          email: u.email,
+          role: u.role,
+          status: u.status,
+          department: u.department,
+          password: u.password,
+        }),
+      }).catch(() => {});
+    }
   } catch (e) {
     console.warn(e);
   }

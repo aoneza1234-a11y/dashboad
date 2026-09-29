@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { FilterState, SalesRecord, ActiveFilterRule } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
+import { getRecordValue, isBlankValue } from '../utils/calcEngine';
 
 interface InlineFilterBarProps {
   filterState: FilterState;
@@ -68,7 +69,47 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Compute distinct values and counts for each column
+  // Compute distinct values and counts for each column with support for cascading other rules
+  const getValuesForRule = (ruleId: string, col: string) => {
+    if (!salesData || salesData.length === 0) return [];
+
+    // Filter dataset by all other active rules first (cascading dependency)
+    const otherRules = rules.filter((r) => r.id !== ruleId && ((r.selectedValues && r.selectedValues.length > 0) || r.value));
+    let baseRecords = salesData;
+
+    if (otherRules.length > 0) {
+      baseRecords = baseRecords.filter((row) => {
+        return otherRules.every((rule) => {
+          if (!rule.column) return true;
+          const val = getRecordValue(row, rule.column);
+          if (rule.selectedValues && rule.selectedValues.length > 0) {
+            const strVal = String(val ?? '').trim().toLowerCase();
+            return rule.selectedValues.some((sv) => String(sv).trim().toLowerCase() === strVal);
+          }
+          if (rule.value) {
+            const strVal = String(val ?? '').trim().toLowerCase();
+            return strVal === String(rule.value).trim().toLowerCase();
+          }
+          return true;
+        });
+      });
+    }
+
+    const counts: Record<string, number> = {};
+    baseRecords.forEach((row) => {
+      const val = getRecordValue(row, col);
+      if (val !== undefined && val !== null && !isBlankValue(val)) {
+        const strVal = String(val).trim();
+        counts[strVal] = (counts[strVal] || 0) + 1;
+      }
+    });
+
+    const list = Object.entries(counts).map(([value, count]) => ({ value, count }));
+    list.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+    return list;
+  };
+
+  // Compute baseline distinct values and counts for each column
   const columnDistinctValues = useMemo(() => {
     const map: Record<string, { value: string; count: number }[]> = {};
     if (!salesData || salesData.length === 0) return map;
@@ -86,8 +127,8 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     allCols.forEach((col) => {
       const counts: Record<string, number> = {};
       salesData.forEach((row) => {
-        const val = row[col];
-        if (val !== undefined && val !== null && String(val).trim() !== '') {
+        const val = getRecordValue(row, col);
+        if (val !== undefined && val !== null && !isBlankValue(val)) {
           const strVal = String(val).trim();
           counts[strVal] = (counts[strVal] || 0) + 1;
         }
@@ -229,7 +270,8 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
 
         {/* 2. Column-based Filter Slots */}
         {rules.map((rule) => {
-          const distinct = columnDistinctValues[rule.column] || [];
+          const ruleDistinct = getValuesForRule(rule.id, rule.column);
+          const distinct = ruleDistinct.length > 0 ? ruleDistinct : (columnDistinctValues[rule.column] || []);
           const selected = rule.selectedValues || (rule.value ? [rule.value] : []);
           const isDropdownOpen = activeDropdownRuleId === rule.id;
           const search = searchQuery[rule.id] || '';

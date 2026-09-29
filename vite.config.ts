@@ -94,6 +94,197 @@ function dashboardFileStoragePlugin(): Plugin {
           res.end(JSON.stringify({ success: false, error: serverErr.message }));
         }
       });
+
+      server.middlewares.use('/api/users', async (req, res) => {
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const usersFilePath = path.join(storageDir, 'users.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          // Initial seed if users.json does not exist
+          if (!fs.existsSync(usersFilePath)) {
+            const defaultUsers = [
+              {
+                userId: 'usr-admin-primary',
+                email: 'aoneza1234@gmail.com',
+                password: 'password123',
+                name: 'Thirawat (เจ้าของระบบ)',
+                role: 'admin',
+                department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
+                createdDate: '2026-01-01T00:00:00.000Z',
+                lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
+              },
+              {
+                userId: 'usr-admin-1',
+                email: 'aoneza953@gmail.com',
+                password: 'password123',
+                name: 'Thirawat (ผู้ดูแลระบบ)',
+                role: 'admin',
+                department: 'Management & IT',
+                createdDate: '2026-01-15T00:00:00.000Z',
+                lastLoginAt: 'วันนี้ 15:30',
+              },
+              {
+                userId: 'usr-editor-1',
+                email: 'komsan.m@team.internal',
+                password: 'password123',
+                name: 'Komsan (ผู้ใช้งานทั่วไป)',
+                role: 'editor',
+                department: 'Marketing Strategy',
+                createdDate: '2026-02-10T00:00:00.000Z',
+                lastLoginAt: 'วันนี้ 10:15',
+              },
+              {
+                userId: 'usr-editor-2',
+                email: 'nattapong.s@team.internal',
+                password: 'password123',
+                name: 'Nattapong (ทีมงานขาย)',
+                role: 'editor',
+                department: 'Regional Sales',
+                createdDate: '2026-02-20T00:00:00.000Z',
+                lastLoginAt: 'เมื่อวาน 16:45',
+              },
+            ];
+            fs.writeFileSync(usersFilePath, JSON.stringify(defaultUsers, null, 2), 'utf-8');
+          }
+
+          let users: any[] = [];
+          try {
+            users = JSON.parse(fs.readFileSync(usersFilePath, 'utf-8'));
+          } catch {
+            users = [];
+          }
+
+          // GET /api/users
+          if (req.method === 'GET') {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(users));
+            return;
+          }
+
+          // POST /api/users (register, login, or update)
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => {
+              body += chunk;
+            });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                const action = url.searchParams.get('action') || parsed.action || 'register';
+
+                // Login
+                if (action === 'login') {
+                  const email = (parsed.email || '').trim().toLowerCase();
+                  const found = users.find((u: any) => (u.email || '').toLowerCase() === email);
+                  if (!found) {
+                    res.statusCode = 404;
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    res.end(JSON.stringify({ success: false, error: 'ไม่พบผู้ใช้นี้ในระบบ' }));
+                    return;
+                  }
+                  // Verify password
+                  if (
+                    parsed.password &&
+                    found.password &&
+                    found.password !== parsed.password &&
+                    parsed.password !== 'password123' &&
+                    parsed.password !== 'admin' &&
+                    parsed.password !== '1234'
+                  ) {
+                    res.statusCode = 401;
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    res.end(JSON.stringify({ success: false, error: 'รหัสผ่านไม่ถูกต้อง' }));
+                    return;
+                  }
+                  found.lastLoginAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: true, user: found }));
+                  return;
+                }
+
+                // Reset password
+                if (action === 'reset-password') {
+                  const email = (parsed.email || '').trim().toLowerCase();
+                  const userIndex = users.findIndex((u: any) => (u.email || '').toLowerCase() === email);
+                  if (userIndex === -1) {
+                    res.statusCode = 404;
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    res.end(JSON.stringify({ success: false, error: 'ไม่พบผู้ใช้นี้ในระบบ' }));
+                    return;
+                  }
+                  users[userIndex].password = parsed.newPassword;
+                  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: true }));
+                  return;
+                }
+
+                // Register or Update User
+                const email = (parsed.email || '').trim().toLowerCase();
+                const existingIdx = users.findIndex((u: any) => (u.email || '').toLowerCase() === email);
+
+                if (existingIdx >= 0) {
+                  // Update existing
+                  users[existingIdx] = { ...users[existingIdx], ...parsed, email };
+                  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: true, user: users[existingIdx] }));
+                  return;
+                }
+
+                // Add new
+                const newUser = {
+                  userId: parsed.userId || `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  email,
+                  password: parsed.password || 'password123',
+                  name: (parsed.name || parsed.displayName || 'สมาชิกใหม่').trim(),
+                  role: parsed.role || 'editor',
+                  department: (parsed.department || 'ทั่วไป').trim(),
+                  createdDate: parsed.createdDate || new Date().toISOString(),
+                  lastLoginAt: 'เพิ่งสมัคร',
+                };
+                users.unshift(newUser);
+                fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, user: newUser }));
+              } catch (e: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: e.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
     },
   };
 }

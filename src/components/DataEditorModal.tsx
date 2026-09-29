@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -12,9 +12,10 @@ import {
   Columns,
   Sparkles,
   RefreshCw,
-  ExternalLink,
   Database,
   Upload,
+  Pencil,
+  AlertTriangle,
 } from 'lucide-react';
 import { SalesRecord, SheetConnectionConfig } from '../types';
 import { INITIAL_SALES_RECORDS } from '../data/sampleData';
@@ -45,7 +46,10 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   connectionConfig,
   onOpenDataSourceStorage,
 }) => {
-  const [records, setRecords] = useState<any[]>(salesData);
+  // Defensive initialization: always ensure records is an array
+  const [records, setRecords] = useState<any[]>(() => {
+    return Array.isArray(salesData) ? JSON.parse(JSON.stringify(salesData)) : [];
+  });
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newColumnName, setNewColumnName] = useState('');
@@ -53,26 +57,41 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync state when opened or salesData changes externally
-  React.useEffect(() => {
+  // Column Renaming State
+  const [editingColKey, setEditingColKey] = useState<string | null>(null);
+  const [editingColName, setEditingColName] = useState<string>('');
+
+  // Sync state safely when opened or salesData changes externally
+  useEffect(() => {
     if (isOpen) {
-      setRecords(Array.isArray(salesData) ? JSON.parse(JSON.stringify(salesData)) : []);
+      const safeData = Array.isArray(salesData) ? salesData : [];
+      try {
+        setRecords(JSON.parse(JSON.stringify(safeData)));
+      } catch {
+        setRecords(safeData.slice());
+      }
       setSearchQuery('');
+      setEditingColKey(null);
     }
   }, [isOpen, salesData]);
 
-  // Dynamically extract all unique columns present in records
+  const safeRecords = useMemo(() => {
+    return Array.isArray(records) ? records : [];
+  }, [records]);
+
+  // Dynamically extract all unique columns present in safeRecords
   const dynamicColumns = useMemo(() => {
     const defaultCols = ['id', 'date', 'orderId', 'product', 'category', 'region', 'quantity', 'revenue', 'cost', 'profit'];
     const foundKeys = new Set<string>();
 
-    records.forEach((rec) => {
+    safeRecords.forEach((rec) => {
       if (rec && typeof rec === 'object') {
-        Object.keys(rec).forEach((k) => foundKeys.add(k));
+        Object.keys(rec).forEach((k) => {
+          if (k && k !== '__rowNum__') foundKeys.add(k);
+        });
       }
     });
 
-    // Order: first standard columns in priority order, then custom dynamic columns
     const ordered: string[] = [];
     defaultCols.forEach((col) => {
       if (foundKeys.has(col)) {
@@ -81,22 +100,22 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
       }
     });
 
-    // Append remaining columns
+    // Append remaining custom columns
     foundKeys.forEach((k) => ordered.push(k));
     return ordered.length > 0 ? ordered : defaultCols;
-  }, [records]);
+  }, [safeRecords]);
 
   if (!isOpen) return null;
 
+  // Handle cell edit
   const handleCellChange = (
     rowIndex: number,
     field: string,
     val: string
   ) => {
-    const updated = [...records];
+    const updated = [...safeRecords];
     const rec = { ...updated[rowIndex] };
 
-    // Check if the field is numeric
     const isNumField =
       field === 'revenue' ||
       field === 'cost' ||
@@ -120,13 +139,14 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
     setRecords(updated);
   };
 
+  // Add new row
   const handleAddRow = () => {
-    const nextId = records.length > 0 ? Math.max(...records.map((r) => Number(r.id) || 0)) + 1 : 1;
-    const newRec: any = {
-      id: nextId,
-    };
+    const nextId = safeRecords.length > 0
+      ? safeRecords.reduce((max, r) => Math.max(max, Number(r.id) || 0), 0) + 1
+      : 1;
 
-    // Populate default values for all known columns
+    const newRec: any = { id: nextId };
+
     dynamicColumns.forEach((col) => {
       if (col === 'id') return;
       if (col === 'date') newRec[col] = new Date().toISOString().substring(0, 10);
@@ -141,13 +161,68 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
       else newRec[col] = '';
     });
 
-    setRecords([newRec, ...records]);
+    setRecords([newRec, ...safeRecords]);
   };
 
+  // Delete row
   const handleDeleteRow = (index: number) => {
-    setRecords(records.filter((_, i) => i !== index));
+    setRecords(safeRecords.filter((_, i) => i !== index));
   };
 
+  // Rename column handler (ตั้งชื่อคอลัมน์)
+  const handleStartRename = (col: string) => {
+    setEditingColKey(col);
+    setEditingColName(col);
+  };
+
+  const handleConfirmRename = () => {
+    if (!editingColKey) return;
+    const trimmed = editingColName.trim();
+    if (!trimmed || trimmed === editingColKey) {
+      setEditingColKey(null);
+      return;
+    }
+
+    if (dynamicColumns.includes(trimmed)) {
+      alert(`มีคอลัมน์ชื่อ "${trimmed}" อยู่แล้ว`);
+      return;
+    }
+
+    // Rename the key across all rows
+    const updated = safeRecords.map((r) => {
+      const copy: any = {};
+      Object.keys(r).forEach((k) => {
+        if (k === editingColKey) {
+          copy[trimmed] = r[k];
+        } else {
+          copy[k] = r[k];
+        }
+      });
+      return copy;
+    });
+
+    setRecords(updated);
+    setEditingColKey(null);
+    setEditingColName('');
+  };
+
+  // Delete Column
+  const handleDeleteColumn = (colToDelete: string) => {
+    if (dynamicColumns.length <= 1) {
+      alert('ไม่สามารถลบคอลัมน์สุดท้ายได้');
+      return;
+    }
+    if (confirm(`คุณต้องการลบคอลัมน์ "${colToDelete}" ออกจากชุดข้อมูลทั้งหมดหรือไม่?`)) {
+      const updated = safeRecords.map((r) => {
+        const copy = { ...r };
+        delete copy[colToDelete];
+        return copy;
+      });
+      setRecords(updated);
+    }
+  };
+
+  // Add Custom Column
   const handleAddCustomColumn = () => {
     const colName = newColumnName.trim();
     if (!colName) return;
@@ -156,7 +231,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
       return;
     }
 
-    const updated = records.map((r) => ({
+    const updated = safeRecords.map((r) => ({
       ...r,
       [colName]: '',
     }));
@@ -189,7 +264,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   };
 
   const handleSave = () => {
-    onSaveData(records);
+    onSaveData(safeRecords);
     setSavedSuccess(true);
     setTimeout(() => {
       setSavedSuccess(false);
@@ -198,11 +273,11 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   };
 
   const handleExportCSV = () => {
-    if (records.length === 0) return;
+    if (safeRecords.length === 0) return;
     const headers = dynamicColumns;
     const csvRows = [
       headers.map((h) => `"${h}"`).join(','),
-      ...records.map((row) =>
+      ...safeRecords.map((row) =>
         headers
           .map((h) => {
             const val = row[h] !== undefined && row[h] !== null ? String(row[h]) : '';
@@ -222,20 +297,20 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
 
   const filteredRecordsWithIndex = useMemo(() => {
     if (!searchQuery.trim()) {
-      return records.map((r, i) => ({ record: r, originalIndex: i }));
+      return safeRecords.map((r, i) => ({ record: r, originalIndex: i }));
     }
     const q = searchQuery.toLowerCase();
-    return records
+    return safeRecords
       .map((r, i) => ({ record: r, originalIndex: i }))
       .filter(({ record }) => {
         return Object.values(record).some((v) =>
           String(v || '').toLowerCase().includes(q)
         );
       });
-  }, [records, searchQuery]);
+  }, [safeRecords, searchQuery]);
 
-  const totalRev = records.reduce((a, b) => a + (Number(b.revenue) || 0), 0);
-  const totalProf = records.reduce((a, b) => a + (Number(b.profit) || 0), 0);
+  const totalRev = safeRecords.reduce((a, b) => a + (Number(b.revenue) || 0), 0);
+  const totalProf = safeRecords.reduce((a, b) => a + (Number(b.profit) || 0), 0);
 
   // Column label translator
   const getColHeaderLabel = (col: string) => {
@@ -268,7 +343,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   return (
     <div
       id="modal-data-editor"
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -276,7 +351,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-wrap gap-3">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-300 shrink-0">
               <FileSpreadsheet className="w-5 h-5" />
@@ -285,7 +360,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                 <span>จัดการและแก้ไขชุดข้อมูล: {datasetTitle}</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
-                  {records.length} แถว • {dynamicColumns.length} คอลัมน์
+                  {safeRecords.length} แถว • {dynamicColumns.length} คอลัมน์
                 </span>
                 {connectionConfig?.spreadsheetId ? (
                   <span className="text-[11px] px-2 py-0.5 rounded-md bg-violet-100 text-violet-800 font-medium border border-violet-200 flex items-center gap-1">
@@ -299,7 +374,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
                 )}
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
-                แก้ไขค่าในเซลล์ได้อิสระ ข้อมูลจะถูกนำไปอัปเดตกราฟ แดชบอร์ด และบันทึกลงบัญชีของคุณทันที
+                คลิกที่เซลล์เพื่อแก้ข้อมูล • คลิกไอคอนดินสอที่หัวตารางเพื่อ<strong>ตั้งชื่อคอลัมน์</strong> • ข้อมูลจะอัปเดตไปยังแดชบอร์ดทันที
                 {totalRev > 0 && (
                   <span className="ml-2 font-medium text-slate-800">
                     | ยอดขายรวม: <strong className="text-violet-700">{totalRev.toLocaleString()}</strong> ฿
@@ -331,7 +406,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
         </div>
 
         {/* Action Toolbar */}
-        <div className="px-5 py-2.5 border-b border-slate-200 bg-white flex items-center justify-between gap-3 text-xs flex-wrap">
+        <div className="px-4 sm:px-5 py-2.5 border-b border-slate-200 bg-white flex items-center justify-between gap-3 text-xs flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleAddRow}
@@ -425,7 +500,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ค้นหาข้อมูล..."
+                placeholder="ค้นหาข้อมูลในตาราง..."
                 className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-800 outline-none focus:border-violet-500 w-44 sm:w-56"
               />
             </div>
@@ -451,43 +526,102 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
           </div>
         )}
 
-        {/* Dynamic Table Grid */}
-        <div className="flex-1 overflow-auto p-4 bg-slate-100/60">
+        {/* Dynamic Table Grid with Column Rename & Cell Editing */}
+        <div className="flex-1 overflow-auto p-4 bg-slate-100/60 min-h-[300px]">
           <div className="bg-white rounded-xl border border-slate-300 shadow-xs overflow-hidden">
             <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-[#1f193d] text-white font-semibold sticky top-0 z-10">
+              <thead className="bg-[#1f193d] text-white font-semibold sticky top-0 z-10 select-none">
                 <tr>
                   <th className="p-2.5 border-b border-slate-700 w-12 text-center">#</th>
-                  {dynamicColumns.map((col) => (
-                    <th
-                      key={col}
-                      className={`p-2.5 border-b border-slate-700 whitespace-nowrap ${
-                        col === 'quantity' || col === 'revenue' || col === 'cost' || col === 'profit'
-                          ? 'text-right'
-                          : col === 'region' || col === 'id'
-                          ? 'text-center'
-                          : 'text-left'
-                      }`}
-                    >
-                      {getColHeaderLabel(col)}
-                    </th>
-                  ))}
+                  {dynamicColumns.map((col) => {
+                    const isEditingThisCol = editingColKey === col;
+                    return (
+                      <th
+                        key={col}
+                        className={`p-2.5 border-b border-slate-700 whitespace-nowrap group/th relative ${
+                          col === 'quantity' || col === 'revenue' || col === 'cost' || col === 'profit'
+                            ? 'text-right'
+                            : col === 'region' || col === 'id'
+                            ? 'text-center'
+                            : 'text-left'
+                        }`}
+                      >
+                        {isEditingThisCol ? (
+                          <div className="inline-flex items-center gap-1 bg-white text-slate-800 p-0.5 rounded shadow-sm">
+                            <input
+                              type="text"
+                              value={editingColName}
+                              onChange={(e) => setEditingColName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleConfirmRename();
+                                if (e.key === 'Escape') setEditingColKey(null);
+                              }}
+                              autoFocus
+                              className="px-1.5 py-0.5 text-xs border border-violet-400 rounded outline-none font-bold text-violet-900 w-32"
+                            />
+                            <button
+                              onClick={handleConfirmRename}
+                              className="px-1.5 py-0.5 bg-emerald-600 text-white rounded text-[11px] font-bold hover:bg-emerald-700 cursor-pointer"
+                              title="ยืนยันเปลี่ยนชื่อคอลัมน์"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => setEditingColKey(null)}
+                              className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] hover:bg-slate-300 cursor-pointer"
+                              title="ยกเลิก"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span
+                              onDoubleClick={() => handleStartRename(col)}
+                              title="ดับเบิลคลิกเพื่อเปลี่ยนชื่อคอลัมน์นี้"
+                              className="cursor-pointer hover:underline"
+                            >
+                              {getColHeaderLabel(col)}
+                            </span>
+                            {/* Rename pencil icon */}
+                            <button
+                              onClick={() => handleStartRename(col)}
+                              className="opacity-0 group-hover/th:opacity-100 p-0.5 hover:text-amber-300 transition text-slate-400 cursor-pointer"
+                              title={`ตั้งชื่อคอลัมน์ "${col}" ใหม่`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            {/* Delete custom column button */}
+                            {col !== 'id' && (
+                              <button
+                                onClick={() => handleDeleteColumn(col)}
+                                className="opacity-0 group-hover/th:opacity-100 p-0.5 hover:text-rose-400 transition text-slate-400 cursor-pointer"
+                                title={`ลบคอลัมน์ "${col}"`}
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </th>
+                    );
+                  })}
                   <th className="p-2.5 border-b border-slate-700 w-12 text-center">ลบ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {filteredRecordsWithIndex.length === 0 ? (
                   <tr>
-                    <td colSpan={dynamicColumns.length + 2} className="text-center py-10 text-slate-400">
+                    <td colSpan={dynamicColumns.length + 2} className="text-center py-12 text-slate-400">
                       {searchQuery ? `ไม่พบข้อมูลที่ตรงกับ "${searchQuery}"` : 'ยังไม่มีข้อมูลในตาราง'}
                     </td>
                   </tr>
                 ) : (
                   filteredRecordsWithIndex.map(({ record, originalIndex }, idx) => (
-                    <tr key={record.id || originalIndex} className="hover:bg-violet-50/60 transition">
+                    <tr key={record?.id || originalIndex} className="hover:bg-violet-50/60 transition">
                       <td className="p-2 text-center text-slate-400 font-medium">{idx + 1}</td>
                       {dynamicColumns.map((col) => {
-                        const val = record[col] !== undefined && record[col] !== null ? String(record[col]) : '';
+                        const val = record && record[col] !== undefined && record[col] !== null ? String(record[col]) : '';
                         const isNumCol =
                           col === 'quantity' || col === 'revenue' || col === 'cost' || col === 'profit';
 
@@ -497,7 +631,7 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
                               type={col === 'date' ? 'date' : isNumCol ? 'number' : 'text'}
                               value={val}
                               onChange={(e) => handleCellChange(originalIndex, col, e.target.value)}
-                              className={`w-full px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-violet-500 outline-none text-slate-800 bg-transparent ${
+                              className={`w-full px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-violet-500 focus:bg-white outline-none text-slate-800 bg-transparent ${
                                 isNumCol ? 'text-right font-mono font-medium' : ''
                               }`}
                             />
@@ -522,20 +656,20 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
         </div>
 
         {/* Footer info */}
-        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+        <div className="px-4 sm:px-5 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
           <span>
-            แสดงผล {filteredRecordsWithIndex.length} จาก {records.length} แถวทั้งหมด
+            แสดงผล {filteredRecordsWithIndex.length} จาก {safeRecords.length} แถวทั้งหมด • เคล็ดลับ: ดับเบิลคลิกชื่อคอลัมน์เพื่อตั้งชื่อใหม่
           </span>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
             >
               ปิดหน้าต่าง
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition cursor-pointer shadow-xs"
+              className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition cursor-pointer shadow-xs"
             >
               บันทึกและนำไปใช้
             </button>

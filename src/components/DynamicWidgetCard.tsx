@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { VisualWidget, SalesRecord, FilterState } from '../types';
 import { ShapeWidget } from './ShapeWidget';
-import { calculateMetricValue, aggregateForWidget } from '../utils/calcEngine';
+import { calculateMetricValue, aggregateForWidget, applyRecordFilters } from '../utils/calcEngine';
 import { ThemeStyles } from '../utils/themeStyles';
 
 // Color palettes
@@ -112,33 +112,38 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
   const cardRef = useRef<HTMLDivElement>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState(false);
 
+  // Records specifically filtered for this visual (applying widget.filterRules and skipBlanks)
+  const widgetRecords = React.useMemo(() => {
+    return applyRecordFilters(filteredRecords, widget, widget.skipBlanks ?? false);
+  }, [filteredRecords, widget]);
+
   // Aggregated data for charts (hooks must execute unconditionally before any early returns)
   const chartData = React.useMemo(() => {
     if (widget.hidden) return [];
-    return aggregateForWidget(filteredRecords, widget, currentPalette);
-  }, [filteredRecords, widget, currentPalette]);
+    return aggregateForWidget(widgetRecords, widget, currentPalette);
+  }, [widgetRecords, widget, currentPalette]);
 
   // Total metric for KPI
   const kpiValue = React.useMemo(() => {
     if (widget.hidden) return 0;
     return calculateMetricValue(
-      filteredRecords,
+      widgetRecords,
       widget.metric || 'revenue',
       widget.aggregation || 'sum',
       widget.skipBlanks ?? false
     );
-  }, [filteredRecords, widget]);
+  }, [widgetRecords, widget]);
 
   // Trend % comparison for KPI (comparing recent vs earlier records, or partitioned by trendCompareColumn)
   const trendInfo = React.useMemo(() => {
-    if (widget.type !== 'kpi' || filteredRecords.length < 2) return null;
+    if (widget.type !== 'kpi' || widgetRecords.length < 2) return null;
     
     let olderRecords: SalesRecord[] = [];
     let newerRecords: SalesRecord[] = [];
     const compCol = widget.trendCompareColumn;
 
-    if (compCol && filteredRecords.some((r: any) => r[compCol] !== undefined)) {
-      const sorted = [...filteredRecords].sort((a: any, b: any) => {
+    if (compCol && widgetRecords.some((r: any) => r[compCol] !== undefined)) {
+      const sorted = [...widgetRecords].sort((a: any, b: any) => {
         const valA = String(a[compCol] || '');
         const valB = String(b[compCol] || '');
         return valA.localeCompare(valB);
@@ -147,9 +152,9 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
       olderRecords = sorted.slice(0, half);
       newerRecords = sorted.slice(half);
     } else {
-      const half = Math.floor(filteredRecords.length / 2);
-      olderRecords = filteredRecords.slice(0, half);
-      newerRecords = filteredRecords.slice(half);
+      const half = Math.floor(widgetRecords.length / 2);
+      olderRecords = widgetRecords.slice(0, half);
+      newerRecords = widgetRecords.slice(half);
     }
 
     const olderVal = calculateMetricValue(
@@ -172,7 +177,7 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
       diff: diff,
       isUp: pct >= 0,
     };
-  }, [widget, filteredRecords]);
+  }, [widget, widgetRecords]);
 
   // Evaluate conditional color rules for KPI & visual
   const matchedConditionalColor = React.useMemo(() => {

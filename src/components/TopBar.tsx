@@ -28,6 +28,8 @@ import {
   Square,
   Circle,
   Triangle,
+  Download,
+  Upload,
   Star,
   Hexagon,
   Cpu,
@@ -90,6 +92,9 @@ interface TopBarProps {
   onOpenNotifications?: () => void;
   onOpenProfile?: () => void;
   isTestRoute?: boolean;
+  onExportFile?: () => void;
+  onImportFile?: (file: File) => void;
+  onAutoOrganize?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -99,6 +104,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSyncing,
   onSync,
   onSaveDashboard,
+  onExportFile,
+  onImportFile,
   lastSavedAt,
   onUndo,
   onRedo,
@@ -135,6 +142,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenNotifications,
   onOpenProfile,
   isTestRoute = false,
+  onAutoOrganize,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(dashboardTitle);
@@ -166,7 +174,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const hasActiveFilters =
-    filterState.regions.length > 0 || filterState.categories.length > 0;
+    filterState.regions.length > 0 ||
+    filterState.categories.length > 0 ||
+    (filterState.rules && filterState.rules.some((r) => (r.selectedValues && r.selectedValues.length > 0) || r.value)) ||
+    !!filterState.crossFilter ||
+    !!filterState.skipBlanks;
 
   const topBarBg = themeStyles ? themeStyles.topBarBg : '#18152b';
   const topBarBorder = themeStyles ? themeStyles.topBarBorder : '#28224b';
@@ -269,11 +281,56 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   : 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/40'
               }`}
-              title="กดบันทึกแดชบอร์ดลงในบัญชีผู้ใช้ของคุณทันที"
+              title="กดบันทึกแดชบอร์ดลงในบัญชีผู้ใช้ของคุณและเซิร์ฟเวอร์ทันที"
             >
               <Save className="w-3.5 h-3.5" />
               <span>บันทึก</span>
             </button>
+          )}
+
+          {/* Export JSON file */}
+          {onExportFile && (
+            <button
+              id="btn-export-dashboard-json"
+              onClick={onExportFile}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                isLight
+                  ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                  : 'bg-[#201a3d] hover:bg-[#2b2252] border-[#342b5c] text-violet-200 hover:text-white'
+              }`}
+              title="ดาวน์โหลดไฟล์แดชบอร์ด (.bi.json) เก็บไว้ในเครื่องหรือสำรองข้อมูล"
+            >
+              <Download className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">โหลดไฟล์ (.json)</span>
+            </button>
+          )}
+
+          {/* Import JSON file */}
+          {onImportFile && (
+            <label
+              id="btn-import-dashboard-json"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                isLight
+                  ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                  : 'bg-[#201a3d] hover:bg-[#2b2252] border-[#342b5c] text-violet-200 hover:text-white'
+              }`}
+              title="เปิดไฟล์แดชบอร์ด (.json) ที่เคยบันทึกไว้เพื่อนำกลับมาทำงานต่อ"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">เปิดไฟล์</span>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onImportFile(file);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
           )}
 
           {/* Undo / Redo / History */}
@@ -654,7 +711,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             </select>
           </div>
 
-          {/* Auto Snap Button (kept, vertical/horizontal alignment buttons removed per user instruction) */}
+          {/* Auto Snap Button */}
           <button
             onClick={
               onAutoSnap ||
@@ -670,6 +727,23 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Magnet className="w-3.5 h-3.5 text-teal-400" />
             <span>จัดชิดอัตโนมัติ</span>
           </button>
+
+          {/* Auto Organize Button */}
+          {onAutoOrganize && (
+            <button
+              id="btn-topbar-auto-organize"
+              onClick={onAutoOrganize}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-[11px] font-bold cursor-pointer transition ${
+                isLight
+                  ? 'bg-violet-50 hover:bg-violet-100 border-violet-400 text-violet-700 shadow-2xs'
+                  : 'bg-violet-900/50 hover:bg-violet-800/70 border-violet-500/60 text-violet-200 shadow-2xs'
+              }`}
+              title="จัดระเบียบแดชบอร์ดอัตโนมัติ (เรียง KPI, กราฟ และตารางให้อยู่ในกรอบอย่างสวยงาม)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>จัดระเบียบอัตโนมัติ</span>
+            </button>
+          )}
 
           {/* Spacing */}
           <div
@@ -759,6 +833,24 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <span className="text-teal-400">×</span>
                 </span>
               ))}
+              {/* Dynamic column rules chips */}
+              {filterState.rules?.filter((r) => (r.selectedValues && r.selectedValues.length > 0) || r.value).map((r) => {
+                const label = r.selectedValues && r.selectedValues.length > 0 ? r.selectedValues.join(', ') : r.value;
+                return (
+                  <span
+                    key={r.id}
+                    onClick={() => {
+                      const updated = filterState.rules?.filter((item) => item.id !== r.id) || [];
+                      onClearFilters();
+                    }}
+                    className="px-2 py-0.5 rounded-full bg-indigo-900/60 border border-indigo-500/50 text-indigo-200 flex items-center gap-1 cursor-pointer hover:bg-rose-900/40"
+                    title={`คลิกเพื่อลบตัวกรอง ${r.column}`}
+                  >
+                    <span>{r.column}: {label}</span>
+                    <span className="text-indigo-400">×</span>
+                  </span>
+                );
+              })}
               <button
                 onClick={onClearFilters}
                 className="text-slate-400 hover:text-white underline ml-1 cursor-pointer"

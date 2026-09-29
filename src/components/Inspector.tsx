@@ -57,6 +57,7 @@ import {
   ConditionalColorRule,
   CalculatedField,
 } from '../types';
+import { getRecordValue } from '../utils/calcEngine';
 
 interface InspectorProps {
   widget: VisualWidget | null;
@@ -252,12 +253,12 @@ export const Inspector: React.FC<InspectorProps> = ({
     if (!salesData || salesData.length === 0) return [];
     const set = new Set<string>();
     salesData.forEach((row) => {
-      const val = row[column] ?? row.category ?? row.region;
+      const val = getRecordValue(row, column);
       if (val !== undefined && val !== null && String(val).trim() !== '') {
-        set.add(String(val));
+        set.add(String(val).trim());
       }
     });
-    return Array.from(set);
+    return Array.from(set).sort();
   };
 
   const handleSaveAsTemplate = () => {
@@ -1410,8 +1411,10 @@ export const Inspector: React.FC<InspectorProps> = ({
                           <option value="not_equals">ไม่เท่ากับ (Not Equals)</option>
                           <option value="contains">ประกอบด้วย (Contains)</option>
                           <option value="starts_with">ขึ้นต้นด้วย (Starts With)</option>
-                          <option value="greater">มากกว่า (Greater Than)</option>
-                          <option value="less">น้อยกว่า (Less Than)</option>
+                          <option value="greater">มากกว่า (Greater Than &gt;)</option>
+                          <option value="greater_equal">มากกว่าหรือเท่ากับ (&ge;)</option>
+                          <option value="less">น้อยกว่า (Less Than &lt;)</option>
+                          <option value="less_equal">น้อยกว่าหรือเท่ากับ (&le;)</option>
                           <option value="count_distinct">★ นับจำนวนโดยไม่ซ้ำ (COUNT DISTINCT)</option>
                           <option value="not_blank">ไม่เป็นค่าว่าง (Not Blank)</option>
                           <option value="is_blank">เป็นค่าว่าง (Is Blank)</option>

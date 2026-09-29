@@ -53,7 +53,11 @@ import {
   refreshUserLiveData,
   UserDashboardData,
 } from './services/userDashboardStore';
-import { applyGlobalFilters } from './utils/calcEngine';
+import {
+  exportDashboardToFile,
+  importDashboardFromFile,
+} from './services/fileStorageService';
+import { applyGlobalFilters, autoOrganizeWidgets } from './utils/calcEngine';
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from './data/sampleData';
 import {
   initAuth,
@@ -585,13 +589,13 @@ export default function App() {
     ]
   );
 
-  // Mount effect: verify background cloud sync if needed, and unlock auto-save
+  // Mount effect: verify background server/cloud sync if needed, and unlock auto-save
   useEffect(() => {
     let isMounted = true;
     if (currentTeamUser?.id) {
       loadUserDashboardFromCloud(currentTeamUser.id)
         .then((cloudData) => {
-          if (isMounted && cloudData && (!initialUserDash || !initialUserDash.widgets || initialUserDash.widgets.length === 0)) {
+          if (isMounted && cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
             applyDashboardData(cloudData);
           }
         })
@@ -958,6 +962,13 @@ export default function App() {
     pushWidgetsState(snapped);
   };
 
+  // Auto Organize Widgets into an executive, clean dashboard grid
+  const handleAutoOrganize = () => {
+    const containerW = 1200;
+    const organized = autoOrganizeWidgets(widgets, containerW);
+    pushWidgetsState(organized);
+  };
+
   // Sync data with Google Sheets using the user's configured Sheet Tab & Row Ranges!
   const handleSyncData = async () => {
     setIsSyncing(true);
@@ -1293,6 +1304,30 @@ export default function App() {
           isSaved={isSaved}
           lastSavedAt={lastSavedTime}
           onSaveDashboard={() => performSave(false)}
+          onExportFile={() => {
+            exportDashboardToFile({
+              widgets,
+              salesData,
+              dashboardTitle,
+              themeConfig,
+              filterState,
+              connectionConfig,
+              spacingMode,
+              lastSavedAt: lastSavedTime || new Date().toLocaleTimeString('th-TH'),
+            });
+          }}
+          onImportFile={(file) => {
+            importDashboardFromFile(file)
+              .then((imported) => {
+                applyDashboardData(imported);
+                if (currentTeamUser?.id) {
+                  saveUserDashboard(currentTeamUser.id, imported);
+                }
+              })
+              .catch((err) => {
+                console.warn('Import error', err);
+              });
+          }}
           isSyncing={isSyncing}
           onSync={handleSyncData}
           onUndo={handleUndo}
@@ -1353,6 +1388,7 @@ export default function App() {
           onTogglePreview={() => setIsPreviewMode((prev) => !prev)}
           onAutoAlign={handleAutoAlign}
           onAutoSnap={handleAutoSnap}
+          onAutoOrganize={handleAutoOrganize}
           currentThemePreset={themeConfig.preset}
           onAddShape={handleAddShape}
           spacingMode={spacingMode}
@@ -1387,6 +1423,7 @@ export default function App() {
             detectedHeaders={connectionConfig.detectedHeaders}
             themeStyles={themeStyles}
             onReorderWidgets={pushWidgetsState}
+            onAutoOrganize={handleAutoOrganize}
           />
 
           {/* Right Inspector Panel */}
@@ -1422,13 +1459,25 @@ export default function App() {
         onOpenDataSourceStorage={() => setIsDataSourceModalOpen(true)}
         onSaveData={(newData) => {
           setSalesData(newData);
-          setConnectionConfig((prev) => ({
-            ...prev,
-            lastSyncedAt: new Date().toLocaleTimeString('th-TH', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-          }));
+          if (newData && newData.length > 0) {
+            const detectedKeys = Object.keys(newData[0]).filter((k) => k !== 'id');
+            setConnectionConfig((prev) => ({
+              ...prev,
+              detectedHeaders: detectedKeys.length > 0 ? detectedKeys : prev.detectedHeaders,
+              lastSyncedAt: new Date().toLocaleTimeString('th-TH', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            }));
+          } else {
+            setConnectionConfig((prev) => ({
+              ...prev,
+              lastSyncedAt: new Date().toLocaleTimeString('th-TH', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            }));
+          }
         }}
       />
 

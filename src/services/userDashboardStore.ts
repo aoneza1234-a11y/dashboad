@@ -17,6 +17,10 @@ import {
   DBUser,
 } from './cloudDatabase';
 import { fetchSheetRowsWithConfig } from './googleSheets';
+import {
+  saveDashboardToServerFile,
+  loadDashboardFromServerFile,
+} from './fileStorageService';
 
 export interface UserDashboardData {
   dashboardId?: string;
@@ -182,23 +186,14 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
   // 1. Return fast local cache immediately if available
   const localCached = loadUserDashboard(userId);
   if (localCached) {
-    // Non-blocking background verification from cloud
-    dbGetLatestDashboard(userId).then((latest) => {
-      if (latest && latest.dashboardConfig && latest.dashboardConfig.widgets) {
-        // Keep updated in background
-        const cloudData: UserDashboardData = {
-          dashboardId: latest.dashboardId,
-          widgets: latest.dashboardConfig.widgets || INITIAL_WIDGETS,
-          salesData: localCached.salesData || latest.dashboardConfig.salesData || INITIAL_SALES_RECORDS,
-          dashboardTitle: latest.dashboardName || localCached.dashboardTitle,
-          themeConfig: latest.dashboardConfig.themeConfig || localCached.themeConfig,
-          filterState: latest.dashboardConfig.filterState || localCached.filterState,
-          connectionConfig: latest.dashboardConfig.connectionConfig || localCached.connectionConfig,
-          spacingMode: latest.dashboardConfig.spacingMode || localCached.spacingMode,
-          lastSavedAt: new Date(latest.updatedDate).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-        };
+    // Non-blocking background verification from server file / cloud
+    loadDashboardFromServerFile(userId).then((serverData) => {
+      if (serverData && serverData.widgets && serverData.widgets.length > 0) {
         try {
-          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(cloudData));
+          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(serverData));
+          if (serverData.salesData && serverData.salesData.length > 0) {
+            localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(serverData.salesData));
+          }
         } catch (e) {}
       }
     }).catch(() => {});
@@ -206,7 +201,25 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
     return localCached;
   }
 
-  // 2. If not in local cache, query IndexedDB / Cloud
+  // 2. Query Server File Storage API (works across different computers and browsers!)
+  try {
+    const serverFile = await loadDashboardFromServerFile(userId);
+    if (serverFile && serverFile.widgets && serverFile.widgets.length > 0) {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(serverFile));
+          if (serverFile.salesData && serverFile.salesData.length > 0) {
+            localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(serverFile.salesData));
+          }
+        } catch (e) {}
+      }
+      return serverFile;
+    }
+  } catch (err) {
+    console.warn('Server file loader notice', err);
+  }
+
+  // 3. If not in server file, query IndexedDB / Cloud
   try {
     const latest = await dbGetLatestDashboard(userId);
     if (latest && latest.dashboardConfig) {
@@ -273,7 +286,12 @@ export function saveUserDashboard(
     }
   }
 
-  // 2. Persist to Cloud Database (Lean template & graph settings with non-blocking sync)
+  // 2. Persist to Server File System API (available across all machines and browsers)
+  saveDashboardToServerFile(userId, payload).catch((err) => {
+    console.warn('Server file save notice:', err);
+  });
+
+  // 3. Persist to Cloud Database (Lean template & graph settings with non-blocking sync)
   const dbPayload: DBDashboard = {
     dashboardId: dId,
     userId,
@@ -295,7 +313,7 @@ export function saveUserDashboard(
     console.warn('Save to cloud database warning:', err);
   });
 
-  // 3. Dispatch global save event
+  // 4. Dispatch global save event
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('user_dashboard_saved', {

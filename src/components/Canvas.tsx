@@ -46,6 +46,7 @@ interface CanvasProps {
   detectedHeaders?: string[];
   themeStyles?: ThemeStyles;
   onReorderWidgets?: (widgets: VisualWidget[]) => void;
+  onAutoOrganize?: () => void;
 }
 
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
@@ -83,6 +84,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   detectedHeaders = [],
   themeStyles,
   onReorderWidgets,
+  onAutoOrganize,
 }) => {
   const [isFloatingBarMinimized, setIsFloatingBarMinimized] = useState(false);
   const [snapMode, setSnapMode] = useState<'free' | 'snap8' | 'snap24'>('free'); // Default to 100% Freeform without forced grid lock!
@@ -279,8 +281,10 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       setActiveGuideLines({ vertical: guideV, horizontal: guideH });
 
-      const newX = Math.max(0, snapVal(rawX));
-      const newY = Math.max(0, snapVal(rawY));
+      const containerW = canvasContainerRef.current?.clientWidth || 1200;
+      const maxAllowedX = Math.max(20, containerW - activeSession.initW - 20);
+      const newX = Math.max(20, Math.min(snapVal(rawX), maxAllowedX));
+      const newY = Math.max(20, snapVal(rawY));
 
       setLiveCoords({
         x: newX,
@@ -291,6 +295,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       onUpdateWidget(activeSession.widgetId, { x: newX, y: newY });
     } else if (activeSession.type === 'resize' && activeSession.direction) {
+      const containerW = canvasContainerRef.current?.clientWidth || 1200;
       let newX = activeSession.initX;
       let newY = activeSession.initY;
       let newW = activeSession.initW;
@@ -298,9 +303,10 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       const dir = activeSession.direction;
 
-      // Horizontal resize
+      // Horizontal resize (capped at 20px right margin)
       if (dir.includes('e')) {
-        newW = Math.max(140, snapVal(activeSession.initW + deltaX));
+        const maxAllowedW = Math.max(140, containerW - activeSession.initX - 20);
+        newW = Math.max(140, Math.min(snapVal(activeSession.initW + deltaX), maxAllowedW));
       } else if (dir.includes('w')) {
         const candidateW = activeSession.initW - deltaX;
         if (candidateW >= 140) {
@@ -460,7 +466,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       id="bi-studio-canvas"
       onClick={handleEmptyCanvasClick}
       style={{ backgroundColor: canvasBackground }}
-      className="flex-1 overflow-y-auto flex flex-col relative select-none transition-colors duration-200"
+      className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col relative select-none transition-colors duration-200"
     >
       {/* 1. Multi-slot dynamic inline filter bar with Column Distinct Values Dropdown */}
       <InlineFilterBar
@@ -476,10 +482,10 @@ export const Canvas: React.FC<CanvasProps> = ({
         themeStyles={themeStyles}
       />
 
-      {/* 2. Main Studio Freeform Canvas Area */}
+      {/* 2. Main Studio Freeform Canvas Area (Max 20px padding from edges to prevent collision) */}
       <div
         onClick={handleEmptyCanvasClick}
-        className="flex-1 p-4 sm:p-6 w-full max-w-[1920px] mx-auto flex flex-col"
+        className="flex-1 p-3 sm:p-5 w-full max-w-[1440px] mx-auto flex flex-col pr-5"
       >
         {/* Freeform Controls Toolbar */}
         {!isPreviewMode && widgets.length > 0 && (
@@ -548,6 +554,20 @@ export const Canvas: React.FC<CanvasProps> = ({
               >
                 <span>เส้นชิดแนว: {showGuides ? 'เปิด' : 'ปิด'}</span>
               </button>
+
+              {/* Auto Organize Dashboard Button */}
+              {onAutoOrganize && (
+                <button
+                  type="button"
+                  id="btn-canvas-auto-organize"
+                  onClick={onAutoOrganize}
+                  className="px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-xs border border-violet-400/30"
+                  title="จัดระเบียบการ์ดและกราฟทั้งหมดบนแดชบอร์ดให้อยู่ในกรอบอย่างสวยงามและเป็นระเบียบอัตโนมัติ"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>จัดระเบียบแดชบอร์ดอัตโนมัติ</span>
+                </button>
+              )}
             </div>
 
             {/* Quick stats HUD */}
