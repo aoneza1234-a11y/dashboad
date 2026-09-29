@@ -75,6 +75,16 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 1500, fallbackV
   });
 }
 
+// Strip undefined fields which Firestore rejects with 'Unsupported field value: undefined'
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined || data === null) return null as unknown as T;
+  try {
+    return JSON.parse(JSON.stringify(data));
+  } catch {
+    return data;
+  }
+}
+
 // Data models as requested by user
 export interface DBUser {
   userId: string;
@@ -270,7 +280,7 @@ export async function seedInitialDatabase(): Promise<void> {
         const snap = await withTimeout(getDoc(uDoc), 800);
         if (snap && !snap.exists()) {
           for (const u of DEFAULT_USERS) {
-            setDoc(doc(db, 'users', u.userId), u).catch(() => {});
+            setDoc(doc(db, 'users', u.userId), sanitizeForFirestore(u)).catch(() => {});
           }
         }
       } catch (err) {
@@ -377,7 +387,7 @@ export async function dbRegisterUser(
     }
 
     // 5. Non-blocking fire-and-forget sync to Firestore (does NOT make user wait)
-    withTimeout(setDoc(doc(db, 'users', newUser.userId), newUser), 800).catch((err) => {
+    withTimeout(setDoc(doc(db, 'users', newUser.userId), sanitizeForFirestore(newUser)), 800).catch((err) => {
       console.warn('Background Firestore user sync notice:', err);
     });
 
@@ -388,7 +398,7 @@ export async function dbRegisterUser(
         salesData: [],
       },
     };
-    withTimeout(setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), lightDashboard), 800).catch((err) => {
+    withTimeout(setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), sanitizeForFirestore(lightDashboard)), 800).catch((err) => {
       console.warn('Background Firestore starter dashboard notice:', err);
     });
 
@@ -472,7 +482,7 @@ export async function dbLoginUser(
     await dbSetCurrentSessionUser(updated);
 
     // Non-blocking Firestore update
-    withTimeout(setDoc(doc(db, 'users', updated.userId), updated, { merge: true }), 1000).catch(() => {});
+    withTimeout(setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore(updated), { merge: true }), 1000).catch(() => {});
 
     return { success: true, user: updated };
   } catch (error: any) {
@@ -499,7 +509,7 @@ export async function dbResetPassword(
     };
     await idbPut('users', updated);
     try {
-      await setDoc(doc(db, 'users', updated.userId), { password: newPassword }, { merge: true });
+      await setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore({ password: newPassword }), { merge: true });
     } catch {
       // Offline fallback
     }
@@ -654,7 +664,7 @@ export async function dbSaveDashboard(dashboard: DBDashboard): Promise<void> {
 
   try {
     const ref = doc(db, 'dashboards', payload.dashboardId);
-    withTimeout(setDoc(ref, leanCloudPayload), 1000).catch((err) => {
+    withTimeout(setDoc(ref, sanitizeForFirestore(leanCloudPayload)), 1000).catch((err) => {
       console.warn('Firestore dashboard non-blocking sync notice:', err);
     });
   } catch (err) {
@@ -894,7 +904,7 @@ export async function dbSaveDataSource(
       columns: ds.columns,
       records: records.slice(0, 1000),
     };
-    await withTimeout(setDoc(doc(db, 'dataSources', ds.dataSourceId), cloudPayload), 1200);
+    await withTimeout(setDoc(doc(db, 'dataSources', ds.dataSourceId), sanitizeForFirestore(cloudPayload)), 1200);
   } catch (err) {
     console.warn('Firestore data source sync warning (cached locally):', err);
   }
