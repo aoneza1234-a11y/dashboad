@@ -1,8 +1,10 @@
 import { DashboardTemplate, VisualWidget } from '../types';
 import { INITIAL_WIDGETS } from '../data/sampleData';
 import { assignTemplatesToUsers } from './teamAuthStore';
+import { db } from './cloudDatabase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-const TEMPLATES_STORAGE_KEY = 'bi_studio_dashboard_templates_v1';
+const TEMPLATES_STORAGE_KEY = 'bi_studio_dashboard_templates_v2';
 
 const INITIAL_TEMPLATES: DashboardTemplate[] = [
   {
@@ -52,28 +54,91 @@ const INITIAL_TEMPLATES: DashboardTemplate[] = [
   },
 ];
 
+let cachedTemplates: DashboardTemplate[] = INITIAL_TEMPLATES;
+
+// Fetch latest templates from Server / Firestore
+export async function fetchTemplatesFromServer(): Promise<DashboardTemplate[]> {
+  // 1. Server API
+  try {
+    const res = await fetch('/api/templates', { headers: { 'Cache-Control': 'no-cache' } });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        cachedTemplates = data;
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(data));
+            window.dispatchEvent(new CustomEvent('dashboard_templates_changed', { detail: data }));
+          } catch {}
+        }
+        return data;
+      }
+    }
+  } catch {}
+
+  // 2. Firestore fallback
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, 'system', 'templates'));
+      if (snap.exists()) {
+        const cloudData = snap.data();
+        if (cloudData && Array.isArray(cloudData.items) && cloudData.items.length > 0) {
+          cachedTemplates = cloudData.items;
+          return cloudData.items;
+        }
+      }
+    } catch {}
+  }
+
+  return getDashboardTemplates();
+}
+
+// Initial fetch on module load
+if (typeof window !== 'undefined') {
+  fetchTemplatesFromServer().catch(() => {});
+}
+
 export function getDashboardTemplates(): DashboardTemplate[] {
   if (typeof window === 'undefined') return INITIAL_TEMPLATES;
   try {
     const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY);
     if (!raw) {
       localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(INITIAL_TEMPLATES));
-      return INITIAL_TEMPLATES;
+      return cachedTemplates || INITIAL_TEMPLATES;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_TEMPLATES;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      cachedTemplates = parsed;
+      return parsed;
+    }
+    return cachedTemplates || INITIAL_TEMPLATES;
   } catch (err) {
-    console.error('Failed to load dashboard templates', err);
-    return INITIAL_TEMPLATES;
+    return cachedTemplates || INITIAL_TEMPLATES;
   }
 }
 
 export function saveDashboardTemplates(templates: DashboardTemplate[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
-  } catch (err) {
-    console.error('Failed to save dashboard templates', err);
+  cachedTemplates = templates;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+      window.dispatchEvent(new CustomEvent('dashboard_templates_changed', { detail: templates }));
+    } catch (err) {
+      console.error('Failed to save dashboard templates', err);
+    }
+  }
+
+  // 1. Sync to Server File System API
+  fetch('/api/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(templates),
+  }).catch(() => {});
+
+  // 2. Sync to Cloud Firestore
+  if (db) {
+    setDoc(doc(db, 'system', 'templates'), { items: templates, updatedAt: new Date().toISOString() }, { merge: true })
+      .catch(() => {});
   }
 }
 

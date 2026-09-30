@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
+import * as XLSX from 'xlsx';
 import {defineConfig, Plugin} from 'vite';
 
 function dashboardFileStoragePlugin(): Plugin {
@@ -668,6 +669,323 @@ function dashboardFileStoragePlugin(): Plugin {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(JSON.stringify({ success: false, error: serverErr.message }));
         }
+      });
+
+      // API: Organization Templates (Shared across all browsers and users)
+      server.middlewares.use('/api/templates', async (req, res) => {
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const templatesFile = path.join(storageDir, 'templates.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          if (req.method === 'GET') {
+            if (fs.existsSync(templatesFile)) {
+              try {
+                const content = fs.readFileSync(templatesFile, 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(content);
+                return;
+              } catch (e) {}
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify([]));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                const templatesList = Array.isArray(parsed) ? parsed : (parsed.templates || []);
+                fs.writeFileSync(templatesFile, JSON.stringify(templatesList, null, 2), 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, count: templatesList.length }));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
+
+      // API: Import Excel from Share Link (OneDrive / SharePoint / Google Drive / Direct URL)
+      server.middlewares.use('/api/import-excel-url', async (req, res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { url, sheetName } = JSON.parse(body || '{}');
+            if (!url || typeof url !== 'string' || !url.trim()) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ success: false, error: 'กรุณาระบุลิงก์ Excel หรือ OneDrive / Google Drive / URL ที่ถูกต้อง' }));
+              return;
+            }
+
+            let targetUrl = url.trim();
+
+            // 1. Transform Google Drive share links to direct download
+            const gdriveMatch = targetUrl.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/);
+            if (gdriveMatch) {
+              const fileId = gdriveMatch[1];
+              targetUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            }
+
+            // 2. Transform Google Sheets links to exported XLSX
+            const gsheetsMatch = targetUrl.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+            if (gsheetsMatch) {
+              const spreadsheetId = gsheetsMatch[1];
+              targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+            }
+
+            // 3. Transform OneDrive share links
+            if (targetUrl.includes('1drv.ms') || targetUrl.includes('onedrive.live.com') || targetUrl.includes('sharepoint.com')) {
+              if (targetUrl.includes('onedrive.live.com') && targetUrl.includes('view.aspx')) {
+                targetUrl = targetUrl.replace('view.aspx', 'download.aspx');
+              } else if (!targetUrl.includes('download=1')) {
+                const separator = targetUrl.includes('?') ? '&' : '?';
+                targetUrl = `${targetUrl}${separator}download=1`;
+              }
+            }
+
+            // 4. Transform Dropbox share links
+            if (targetUrl.includes('dropbox.com')) {
+              targetUrl = targetUrl.replace('dl=0', 'dl=1');
+              if (!targetUrl.includes('dl=1')) {
+                const separator = targetUrl.includes('?') ? '&' : '?';
+                targetUrl = `${targetUrl}${separator}dl=1`;
+              }
+            }
+
+            // Fetch the file binary with redirect following
+            const fileRes = await fetch(targetUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv, */*',
+              },
+              redirect: 'follow',
+            });
+
+            if (!fileRes.ok) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({
+                success: false,
+                error: `ไม่สามารถเข้าถึงไฟล์จากลิงก์ได้ (HTTP ${fileRes.status}) กรุณาตรวจสอบว่าเปิดสิทธิ์เข้าถึง 'ทุกคนที่มีลิงก์' (Anyone with link) แล้วหรือไม่`,
+              }));
+              return;
+            }
+
+            const arrayBuffer = await fileRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Parse with XLSX
+            let workbook;
+            try {
+              workbook = XLSX.read(buffer, { type: 'buffer' });
+            } catch (xlsxErr: any) {
+              try {
+                const text = buffer.toString('utf-8');
+                workbook = XLSX.read(text, { type: 'string' });
+              } catch (csvErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({
+                  success: false,
+                  error: 'ไม่สามารถอ่านโครงสร้างไฟล์ Excel/CSV ได้ กรุณาตรวจสอบว่าเป็นไฟล์ Excel ที่แชร์แบบสาธารณะหรือไม่',
+                }));
+                return;
+              }
+            }
+
+            const sheetNames = workbook.SheetNames || [];
+            if (sheetNames.length === 0) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ success: false, error: 'ไม่พบแผ่นงาน (Sheet) ในไฟล์ Excel นี้' }));
+              return;
+            }
+
+            const targetSheetName = sheetName && sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
+            const worksheet = workbook.Sheets[targetSheetName];
+            const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+            if (!rawRows || rawRows.length === 0) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ success: false, error: `ไม่พบข้อมูลแถวในแผ่นงาน "${targetSheetName}"` }));
+              return;
+            }
+
+            // Extract column names
+            const cols = new Set<string>();
+            rawRows.slice(0, 50).forEach((row) => {
+              if (row && typeof row === 'object') {
+                Object.keys(row).forEach((k) => cols.add(k));
+              }
+            });
+            const columns = Array.from(cols);
+
+            // Map rows into standardized SalesRecord format
+            const mappedRecords = rawRows.map((row: any, idx: number) => {
+              const findVal = (possibleKeys: string[]): any => {
+                for (const key of possibleKeys) {
+                  for (const actualKey of Object.keys(row)) {
+                    if (actualKey.trim().toLowerCase().includes(key.toLowerCase())) {
+                      return row[actualKey];
+                    }
+                  }
+                }
+                return undefined;
+              };
+
+              const revenueVal = Number(
+                findVal(['revenue', 'ยอดขาย', 'sales', 'amount', 'total', 'ราคา', 'รวม', 'รายได้']) ??
+                row.revenue ??
+                row['ยอดขาย (บาท)'] ??
+                0
+              ) || 0;
+
+              const costVal = Number(
+                findVal(['cost', 'ต้นทุน', 'expense', 'ค่าใช้จ่าย']) ??
+                row.cost ??
+                row['ต้นทุน (บาท)'] ??
+                Math.round(revenueVal * 0.65)
+              ) || 0;
+
+              const profitVal = Number(
+                findVal(['profit', 'กำไร', 'margin', 'กำไรขั้นต้น']) ??
+                row.profit ??
+                row['กำไรขั้นต้น (บาท)'] ??
+                Math.max(0, revenueVal - costVal)
+              ) || Math.max(0, revenueVal - costVal);
+
+              const qtyVal = Number(
+                findVal(['quantity', 'จำนวน', 'qty', 'count', 'ชิ้น', 'หน่วย']) ??
+                row.quantity ??
+                1
+              ) || 1;
+
+              const dateVal = String(
+                findVal(['date', 'วันที่', 'time', 'order date', 'วัน']) ??
+                row.date ??
+                new Date().toISOString().split('T')[0]
+              ).trim();
+
+              const orderIdVal = String(
+                findVal(['order', 'เลขที่', 'id', 'invoice', 'code', 'รหัส']) ??
+                row.orderId ??
+                `ORD-${1000 + idx}`
+              ).trim();
+
+              const productVal = String(
+                findVal(['product', 'สินค้า', 'item', 'name', 'ชื่อสินค้า', 'รายการ']) ??
+                row.product ??
+                `สินค้า ${idx + 1}`
+              ).trim();
+
+              const categoryVal = String(
+                findVal(['category', 'หมวดหมู่', 'group', 'type', 'ประเภท', 'หมวด']) ??
+                row.category ??
+                'ทั่วไป'
+              ).trim();
+
+              const regionVal = String(
+                findVal(['region', 'ภูมิภาค', 'zone', 'area', 'ภาค', 'โซน', 'จังหวัด', 'สาขา']) ??
+                row.region ??
+                'กรุงเทพฯ และปริมณฑล'
+              ).trim();
+
+              return {
+                id: idx + 1,
+                date: dateVal,
+                orderId: orderIdVal,
+                product: productVal,
+                category: categoryVal,
+                region: regionVal,
+                quantity: qtyVal,
+                revenue: revenueVal,
+                cost: costVal,
+                profit: profitVal,
+                ...row,
+              };
+            });
+
+            let derivedName = 'ชุดข้อมูล_Excel_ออนไลน์.xlsx';
+            try {
+              const urlObj = new URL(url);
+              const pathEnd = urlObj.pathname.split('/').pop() || '';
+              if (pathEnd.endsWith('.xlsx') || pathEnd.endsWith('.csv') || pathEnd.endsWith('.xls')) {
+                derivedName = decodeURIComponent(pathEnd);
+              } else if (urlObj.hostname.includes('onedrive')) {
+                derivedName = 'OneDrive_Excel_Data.xlsx';
+              } else if (urlObj.hostname.includes('google')) {
+                derivedName = 'Google_Drive_Excel_Data.xlsx';
+              }
+            } catch (e) {}
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({
+              success: true,
+              fileName: derivedName,
+              sheetNames,
+              selectedSheet: targetSheetName,
+              columns,
+              recordCount: mappedRecords.length,
+              records: mappedRecords,
+              sourceUrl: url,
+            }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: false, error: err?.message || 'เกิดข้อผิดพลาดในการประมวลผลไฟล์ Excel' }));
+          }
+        });
       });
     },
   };
