@@ -26,7 +26,9 @@ import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from '../data/sampleData';
 let dbInstance: any = null;
 try {
   const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  dbInstance = getFirestore(app);
+  dbInstance = (firebaseConfig as any).firestoreDatabaseId
+    ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId)
+    : getFirestore(app);
 } catch (e) {
   console.warn('Firebase init notice:', e);
 }

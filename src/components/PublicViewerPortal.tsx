@@ -24,7 +24,8 @@ import { VisualWidget, SalesRecord, FilterState, SheetConnectionConfig } from '.
 import { ThemeStyles } from '../utils/themeStyles';
 import { DynamicWidgetCard } from './DynamicWidgetCard';
 import { InlineFilterBar } from './InlineFilterBar';
-import { getSiteStatus, incrementViewerCount } from '../services/siteStatusStore';
+import { getSiteStatus, incrementViewerCount, startSiteStatusSync } from '../services/siteStatusStore';
+import { MaintenanceScreen } from './MaintenanceScreen';
 
 interface PublicViewerPortalProps {
   dashboardTitle: string;
@@ -39,6 +40,8 @@ interface PublicViewerPortalProps {
   connectionConfig: SheetConnectionConfig;
   onRefreshData?: () => void;
   isSyncing?: boolean;
+  sharedByUserName?: string;
+  sharedByUserId?: string;
 }
 
 export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
@@ -54,6 +57,8 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
   connectionConfig,
   onRefreshData,
   isSyncing = false,
+  sharedByUserName,
+  sharedByUserId,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'freeform' | 'grid'>('freeform');
@@ -66,8 +71,16 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
   const [selectedRecord, setSelectedRecord] = useState<SalesRecord | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Check site status & password protection
-  const siteStatus = getSiteStatus();
+  // Check site status & password protection with active real-time multi-browser sync
+  const [siteStatus, setSiteStatus] = useState(getSiteStatus());
+
+  useEffect(() => {
+    const unsub = startSiteStatusSync((updated) => {
+      setSiteStatus(updated);
+    });
+    return () => unsub();
+  }, []);
+
   const [isUnlocked, setIsUnlocked] = useState(!siteStatus.viewerConfig?.passwordEnabled);
   const [enteredPass, setEnteredPass] = useState('');
   const [passError, setPassError] = useState(false);
@@ -76,6 +89,17 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
   useEffect(() => {
     incrementViewerCount();
   }, []);
+
+  // If site closed by admin across any browser, immediately display maintenance mode!
+  if (!siteStatus.isOnline) {
+    return (
+      <MaintenanceScreen
+        status={siteStatus}
+        onRefresh={() => setSiteStatus(getSiteStatus())}
+        onBypass={() => {}}
+      />
+    );
+  }
 
   // Check favorite from localStorage
   useEffect(() => {
@@ -281,6 +305,11 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
               <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">
                 {dashboardTitle || 'แดชบอร์ดวิเคราะห์ยอดขาย'}
               </h1>
+              {sharedByUserName && (
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-violet-600/30 text-violet-200 border border-violet-400/40 font-medium flex items-center gap-1">
+                  <span>จัดทำโดย: {sharedByUserName}</span>
+                </span>
+              )}
               <button
                 onClick={toggleFavorite}
                 className="p-1 rounded-lg text-slate-400 hover:text-amber-400 transition cursor-pointer"

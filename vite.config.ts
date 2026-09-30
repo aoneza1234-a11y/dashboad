@@ -285,6 +285,287 @@ function dashboardFileStoragePlugin(): Plugin {
           res.end(JSON.stringify({ success: false, error: serverErr.message }));
         }
       });
+
+      // API: Site Status (Global Online/Offline across all browsers)
+      server.middlewares.use('/api/site-status', async (req, res) => {
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const statusFilePath = path.join(storageDir, 'site_status.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          const defaultStatus = {
+            platformName: 'Studio BI Analytics',
+            platformSubtitle: 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ',
+            isOnline: true,
+            maintenanceTitle: 'เว็บไซต์ปิดปรับปรุงชั่วคราว',
+            maintenanceMessage: 'ขณะนี้ผู้ดูแลระบบกำลังอัปเดตข้อมูลและปรับปรุงแดชบอร์ด ระบบจะเปิดให้บริการตามปกติเร็วๆ นี้ กรุณากลับมาใหม่อีกครั้งในภายหลัง',
+            contactEmail: 'admin@studio-bi.com',
+            updatedAt: new Date().toISOString(),
+            updatedBy: 'ผู้ดูแลระบบ (Owner)',
+            defaultLandingPortal: 'studio',
+            adminPasscode: 'admin1234',
+            viewerConfig: {
+              passwordEnabled: false,
+              password: '',
+              expiryEnabled: false,
+              expiryDate: '',
+              allowDownload: true,
+              maxViewsLimit: 1000,
+              totalViewsCount: 142,
+            },
+            cmsSettings: {
+              bannerEnabled: false,
+              bannerMessage: '🎉 อัปเดตใหม่: เชื่อมต่อข้อมูลและแชร์แดชบอร์ดแบบเรียลไทม์',
+              bannerType: 'info',
+              systemNews: [],
+              seoTitle: 'Enterprise BI Studio',
+              seoDescription: 'สร้างแดชบอร์ด กรองข้อมูลเชิงลึก และแชร์รายงานให้กับผู้ชมได้แบบเรียลไทม์',
+            },
+            securitySettings: {
+              mfaRequired: false,
+              ipWhitelist: ['127.0.0.1'],
+              sessionTimeoutMinutes: 60,
+            },
+          };
+
+          if (req.method === 'GET') {
+            if (fs.existsSync(statusFilePath)) {
+              const content = fs.readFileSync(statusFilePath, 'utf-8');
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(content);
+              return;
+            }
+            fs.writeFileSync(statusFilePath, JSON.stringify(defaultStatus, null, 2), 'utf-8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(defaultStatus));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                let current = defaultStatus;
+                if (fs.existsSync(statusFilePath)) {
+                  try {
+                    current = JSON.parse(fs.readFileSync(statusFilePath, 'utf-8'));
+                  } catch (e) {}
+                }
+                const updates = JSON.parse(body);
+                const updated = {
+                  ...current,
+                  ...updates,
+                  viewerConfig: { ...current.viewerConfig, ...(updates.viewerConfig || {}) },
+                  cmsSettings: { ...current.cmsSettings, ...(updates.cmsSettings || {}) },
+                  securitySettings: { ...current.securitySettings, ...(updates.securitySettings || {}) },
+                  updatedAt: new Date().toISOString(),
+                };
+                fs.writeFileSync(statusFilePath, JSON.stringify(updated, null, 2), 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify(updated));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ error: serverErr.message }));
+        }
+      });
+
+      // API: Shared Dashboards & User Dashboards (Cross-Browser Shared Hub)
+      server.middlewares.use('/api/shared-dashboards', async (req, res) => {
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
+        const storageDir = path.resolve(process.cwd(), 'data/storage/dashboards');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          if (req.method === 'GET') {
+            const dashId = url.searchParams.get('dashId') || url.searchParams.get('dash') || '';
+            const userId = url.searchParams.get('userId') || url.searchParams.get('user') || '';
+
+            // 1. Try finding by dashId
+            if (dashId) {
+              const safeDash = dashId.replace(/[^a-zA-Z0-9_-]/g, '_');
+              const dashFile = path.join(storageDir, `dashboard_${safeDash}.json`);
+              if (fs.existsSync(dashFile)) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(fs.readFileSync(dashFile, 'utf-8'));
+                return;
+              }
+            }
+
+            // 2. Try finding by userId
+            if (userId) {
+              const safeUser = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
+              const userFile = path.join(storageDir, `dashboard_${safeUser}.json`);
+              if (fs.existsSync(userFile)) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(fs.readFileSync(userFile, 'utf-8'));
+                return;
+              }
+            }
+
+            // 3. Try to find any dashboard matching userId substring in filenames
+            if (userId || dashId) {
+              const files = fs.readdirSync(storageDir);
+              const target = (dashId || userId).replace(/[^a-zA-Z0-9_-]/g, '_');
+              const match = files.find((f) => f.includes(target) && f.endsWith('.json'));
+              if (match) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(fs.readFileSync(path.join(storageDir, match), 'utf-8'));
+                return;
+              }
+            }
+
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: false, error: 'Dashboard not found' }));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                const dashId = parsed.dashboardId || parsed.id || `dash-${Date.now()}`;
+                const userId = parsed.userId || 'shared_user';
+                const safeDash = String(dashId).replace(/[^a-zA-Z0-9_-]/g, '_');
+                const safeUser = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                // Save to both specific dashId and user's latest dashboard file
+                fs.writeFileSync(path.join(storageDir, `dashboard_${safeDash}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
+                fs.writeFileSync(path.join(storageDir, `dashboard_${safeUser}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, dashboardId: dashId, userId }));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
+
+      // API: Data Sources Hub
+      server.middlewares.use('/api/datasources', async (req, res) => {
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const dsFile = path.join(storageDir, 'datasources.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          if (req.method === 'GET') {
+            if (fs.existsSync(dsFile)) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(fs.readFileSync(dsFile, 'utf-8'));
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify([]));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                let existing: any[] = [];
+                if (fs.existsSync(dsFile)) {
+                  try { existing = JSON.parse(fs.readFileSync(dsFile, 'utf-8')); } catch (e) {}
+                }
+                const newDs = JSON.parse(body);
+                existing = [newDs, ...existing.filter((d: any) => d.dataSourceId !== newDs.dataSourceId)];
+                fs.writeFileSync(dsFile, JSON.stringify(existing, null, 2), 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, count: existing.length }));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
     },
   };
 }

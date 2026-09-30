@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   Clock,
@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   Key,
 } from 'lucide-react';
-import { SiteStatus } from '../services/siteStatusStore';
+import { SiteStatus, startSiteStatusSync } from '../services/siteStatusStore';
 
 interface MaintenanceScreenProps {
   status: SiteStatus;
@@ -28,6 +28,16 @@ export const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
+
+  // Auto-detect when Admin turns site back online across any browser
+  useEffect(() => {
+    const unsub = startSiteStatusSync((updated) => {
+      if (updated.isOnline) {
+        onRefresh();
+      }
+    });
+    return () => unsub();
+  }, [onRefresh]);
 
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();

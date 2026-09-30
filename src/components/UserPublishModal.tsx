@@ -13,14 +13,19 @@ import {
   X,
   Sliders,
   Sparkles,
+  UserCheck,
 } from 'lucide-react';
 import { getSiteStatus, saveSiteStatus, ViewerShareConfig } from '../services/siteStatusStore';
+import { TeamUser } from '../types';
 
 interface UserPublishModalProps {
   isOpen: boolean;
   onClose: () => void;
   dashboardTitle: string;
   onPreviewViewer: () => void;
+  currentUser?: TeamUser | null;
+  dashboardId?: string;
+  onSaveBeforeShare?: () => void;
 }
 
 export const UserPublishModal: React.FC<UserPublishModalProps> = ({
@@ -28,6 +33,9 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
   onClose,
   dashboardTitle,
   onPreviewViewer,
+  currentUser,
+  dashboardId,
+  onSaveBeforeShare,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
@@ -40,20 +48,25 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Build unique viewer URL customized for this exact user and dashboard
   const viewerUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?portal=viewer`
+    ? `${window.location.origin}${window.location.pathname}?portal=viewer${
+        currentUser?.id ? `&user=${encodeURIComponent(currentUser.id)}` : ''
+      }${dashboardId ? `&dash=${encodeURIComponent(dashboardId)}` : ''}`
     : '';
 
   const embedCode = `<iframe\n  src="${viewerUrl}"\n  width="100%"\n  height="800px"\n  frameborder="0"\n  allowfullscreen\n></iframe>`;
 
   const handleCopyLink = () => {
     if (!viewerUrl) return;
+    if (onSaveBeforeShare) onSaveBeforeShare();
     navigator.clipboard.writeText(viewerUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
   const handleCopyEmbed = () => {
+    if (onSaveBeforeShare) onSaveBeforeShare();
     navigator.clipboard.writeText(embedCode);
     setCopiedEmbed(true);
     setTimeout(() => setCopiedEmbed(false), 2500);
@@ -81,9 +94,17 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
               <Share2 className="w-5 h-5 text-violet-400" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">เผยแพร่ & แชร์ลิงก์สำหรับผู้ชม (Viewer Link)</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-white">เผยแพร่ & แชร์ลิงก์สำหรับผู้ชม (Viewer Link)</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-600/40 text-violet-200 border border-violet-400/30 font-semibold">
+                  เฉพาะยูสเซอร์
+                </span>
+              </div>
               <p className="text-xs text-slate-400">
                 แดชบอร์ด: <span className="text-violet-300 font-semibold">{dashboardTitle || 'รายงานสรุปภาพรวม'}</span>
+                {currentUser && (
+                  <span className="ml-2 text-indigo-300 font-medium">• สร้างโดย: {currentUser.displayName || currentUser.name}</span>
+                )}
               </p>
             </div>
           </div>
@@ -139,21 +160,31 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
               <div className="p-3.5 rounded-2xl bg-violet-950/40 border border-violet-500/30 flex items-start gap-3">
                 <Shield className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
                 <div className="text-xs space-y-1">
-                  <p className="font-semibold text-violet-300">
-                    ลิงก์สำหรับผู้ชมทั่วไป (Read-only Viewer Link)
+                  <p className="font-semibold text-violet-300 flex items-center gap-2">
+                    <span>ลิงก์สำหรับผู้ชมตามแดชบอร์ดที่ท่านสร้างไว้</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">
+                      Online Sync
+                    </span>
                   </p>
-                  <p className="text-slate-300 leading-relaxed">
-                    ผู้ที่เปิดผ่านลิงก์นี้จะสามารถค้นหา, กรองข้อมูล, ดูชาร์ตสถิติ และเปิดดูรูปภาพ/เอกสารได้เต็มรูปแบบ 
-                    โดยไม่สามารถแก้ไขโครงสร้าง หรือลบข้อมูลใดๆ ของคุณได้
+                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                    ลิงก์นี้เชื่อมต่อกับฐานข้อมูลคลาวด์โดยตรง ผู้ชมในทุกบราวเซอร์จะเห็นการจัดวาง วิดเจ็ต ชาร์ต และการคำนวณตามที่ท่านปรับแต่งไว้ทั้งหมด และเป็นลิงก์แยกเฉพาะของท่าน
                   </p>
                 </div>
               </div>
 
               {/* URL Box */}
               <div className="space-y-2">
-                <label className="text-xs text-slate-300 font-medium block">
-                  URL สาธารณะสำหรับส่งให้ผู้บริหารหรือลูกค้า:
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-slate-300 font-medium block">
+                    URL เฉพาะของผู้แชร์ (ส่งให้ผู้บริหารหรือผู้ชมภายนอก):
+                  </label>
+                  {currentUser && (
+                    <span className="text-[11px] text-indigo-300 flex items-center gap-1 font-medium">
+                      <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{currentUser.displayName || currentUser.name}</span>
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -305,6 +336,7 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
         <div className="p-4 bg-[#120e24] border-t border-white/10 flex items-center justify-between">
           <button
             onClick={() => {
+              if (onSaveBeforeShare) onSaveBeforeShare();
               if (viewerUrl) {
                 window.open(viewerUrl, '_blank');
               }
@@ -318,6 +350,7 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
+                if (onSaveBeforeShare) onSaveBeforeShare();
                 onClose();
                 onPreviewViewer();
               }}

@@ -95,6 +95,7 @@ interface TopBarProps {
   onExportFile?: () => void;
   onImportFile?: (file: File) => void;
   onAutoOrganize?: () => void;
+  dashboardId?: string;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -143,6 +144,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenProfile,
   isTestRoute = false,
   onAutoOrganize,
+  dashboardId,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(dashboardTitle);
@@ -885,6 +887,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         onClose={() => setShowShareModal(false)}
         dashboardTitle={dashboardTitle}
         onPreviewViewer={onSwitchToViewer}
+        currentUser={currentUser}
+        dashboardId={dashboardId}
+        onSaveBeforeShare={onSaveDashboard}
       />
     </header>
   );

@@ -1,0 +1,12 @@
+{
+  "userId": "usr-test-1",
+  "dashboardId": "dash-test-1",
+  "dashboardTitle": "ทดสอบแดชบอร์ดแชร์",
+  "widgets": [
+    {
+      "id": "w1",
+      "type": "bar",
+      "title": "ยอดขาย"
+    }
+  ]
+}

@@ -28,7 +28,15 @@ import { UserNotificationsModal } from './components/UserNotificationsModal';
 import { DataSourceModal } from './components/DataSourceModal';
 import { TestLabBar } from './components/TestLabBar';
 import { getThemeStyles } from './utils/themeStyles';
-import { getSiteStatus, SiteStatus, toggleSiteOnline, isAdminAuthenticatedSession, logoutAdminSession } from './services/siteStatusStore';
+import {
+  getSiteStatus,
+  SiteStatus,
+  toggleSiteOnline,
+  isAdminAuthenticatedSession,
+  logoutAdminSession,
+  startSiteStatusSync,
+  fetchSiteStatusFromServer,
+} from './services/siteStatusStore';
 import { Lock } from 'lucide-react';
 
 import {
@@ -47,12 +55,14 @@ import {
   saveUserDashboard,
   loadUserDashboard,
   loadUserDashboardFromCloud,
+  loadDashboardByShareParams,
   clearUserDashboardSession,
   getStarterUserDashboard,
   getUserSalesDataKey,
   refreshUserLiveData,
   UserDashboardData,
 } from './services/userDashboardStore';
+import { dbGetAllUsers } from './services/cloudDatabase';
 import {
   exportDashboardToFile,
   importDashboardFromFile,
@@ -285,20 +295,17 @@ export default function App() {
     };
   }, []);
 
-  // Filter State & Studio Canvas (รองรับ Cross-filtering, ไม่นับช่องว่าง, และเงื่อนไขย่อย)
+  // Global Real-time Site Status (ปิด/เปิดระบบพร้อมกันทั่วโลกทุกบราวเซอร์)
   const [siteStatus, setSiteStatus] = useState<SiteStatus>(getSiteStatus());
   const [adminBypass, setAdminBypass] = useState(false);
+  const [sharedCreatorName, setSharedCreatorName] = useState<string>('');
 
   useEffect(() => {
-    const handleStatusUpdate = () => {
-      setSiteStatus(getSiteStatus());
-    };
-    window.addEventListener('site_status_changed', handleStatusUpdate);
-    window.addEventListener('storage', handleStatusUpdate);
-    return () => {
-      window.removeEventListener('site_status_changed', handleStatusUpdate);
-      window.removeEventListener('storage', handleStatusUpdate);
-    };
+    // Active multi-browser real-time synchronization
+    const unsubscribe = startSiteStatusSync((newStatus) => {
+      setSiteStatus(newStatus);
+    });
+    return () => unsubscribe();
   }, []);
 
   const [filterState, setFilterState] = useState<FilterState>(() => initialUserDash?.filterState || {
@@ -527,6 +534,33 @@ export default function App() {
     },
     [accessToken, applyDashboardData]
   );
+
+  // When opening viewer portal (?portal=viewer&user=...&dash=...), load the creator's exact customized dashboard
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const targetUser = params.get('user');
+    const targetDash = params.get('dash');
+
+    if (targetUser || targetDash) {
+      loadDashboardByShareParams(targetUser, targetDash).then((sharedData) => {
+        if (sharedData && sharedData.widgets && sharedData.widgets.length > 0) {
+          applyDashboardData(sharedData);
+        }
+      });
+
+      if (targetUser) {
+        dbGetAllUsers().then((allUsers) => {
+          const found = allUsers.find(
+            (u) => u.userId === targetUser || u.email.toLowerCase() === targetUser.toLowerCase()
+          );
+          if (found) {
+            setSharedCreatorName(found.name);
+          }
+        });
+      }
+    }
+  }, [viewMode, applyDashboardData]);
 
   const handleTeamLogout = () => {
     // 1. Force flush current user's changes to storage BEFORE logging out!
@@ -1123,8 +1157,9 @@ export default function App() {
         <MaintenanceScreen
           status={siteStatus}
           onRefresh={() => {
-            setSiteStatus(getSiteStatus());
+            fetchSiteStatusFromServer().then(setSiteStatus);
           }}
+          onBypass={() => {}}
         />
       );
     }
@@ -1143,19 +1178,22 @@ export default function App() {
         connectionConfig={connectionConfig}
         onRefreshData={handleSyncData}
         isSyncing={isSyncing}
+        sharedByUserName={sharedCreatorName || (currentTeamUser ? currentTeamUser.displayName : undefined)}
+        sharedByUserId={currentTeamUser?.id}
       />
     );
   }
 
   // Studio Portal (User Portal)
-  // 1. If website is turned off by Admin: Completely blocked!
-  if (!siteStatus.isOnline) {
+  // 1. If website is turned off by Admin: Completely blocked across all browsers for normal users and visitors!
+  if (!siteStatus.isOnline && currentTeamUser?.role !== 'admin') {
     return (
       <MaintenanceScreen
         status={siteStatus}
         onRefresh={() => {
-          setSiteStatus(getSiteStatus());
+          fetchSiteStatusFromServer().then(setSiteStatus);
         }}
+        onBypass={() => {}}
       />
     );
   }
@@ -1395,6 +1433,7 @@ export default function App() {
           onSpacingChange={setSpacingMode}
           themeStyles={themeStyles}
           isTestRoute={isTestRoute}
+          dashboardId={initialUserDash?.dashboardId || (currentTeamUser ? `dash-${currentTeamUser.id}` : 'dash-main')}
         />
 
         {/* Central Visual Canvas */}
@@ -1606,10 +1645,16 @@ export default function App() {
         isOpen={isPublishModalOpen}
         onClose={() => setIsPublishModalOpen(false)}
         dashboardTitle={dashboardTitle}
+        currentUser={currentTeamUser}
+        dashboardId={initialUserDash?.dashboardId || (currentTeamUser ? `dash-${currentTeamUser.id}` : 'dash-main')}
+        onSaveBeforeShare={() => performSave(false)}
         onPreviewViewer={() => {
           if (typeof window !== 'undefined') {
             const url = new URL(window.location.href);
             url.searchParams.set('portal', 'viewer');
+            if (currentTeamUser?.id) {
+              url.searchParams.set('user', currentTeamUser.id);
+            }
             window.history.pushState({}, '', url.toString());
           }
           setViewMode('public_viewer');

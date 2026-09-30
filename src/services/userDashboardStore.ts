@@ -253,6 +253,83 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
   return null;
 }
 
+// Load customized dashboard specifically for public viewers by sharer's userId and/or dashboardId
+export async function loadDashboardByShareParams(userId?: string | null, dashId?: string | null): Promise<UserDashboardData | null> {
+  if (!userId && !dashId) return null;
+
+  // 1. Query shared dashboard hub (/api/shared-dashboards)
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.set('user', userId);
+    if (dashId) params.set('dash', dashId);
+
+    const res = await fetch(`/api/shared-dashboards?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.widgets && Array.isArray(data.widgets) && data.widgets.length > 0) {
+        return {
+          dashboardId: data.dashboardId || dashId || undefined,
+          widgets: data.widgets,
+          salesData: Array.isArray(data.salesData) && data.salesData.length > 0 ? data.salesData : INITIAL_SALES_RECORDS,
+          dashboardTitle: data.dashboardTitle || data.dashboardName || 'แดชบอร์ดที่แชร์',
+          themeConfig: data.themeConfig || {
+            preset: 'violet',
+            primaryColor: '#7c3aed',
+            fontFamily: 'Prompt',
+            borderRadius: 'rounded-lg',
+            shadowStyle: 'shadow-sm',
+          },
+          filterState: data.filterState,
+          connectionConfig: data.connectionConfig,
+          spacingMode: data.spacingMode || 'ปกติ',
+          lastSavedAt: data.lastSavedAt || '',
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Load shared dashboard API warning', err);
+  }
+
+  // 2. Query /api/user-dashboard?userId=...
+  if (userId) {
+    try {
+      const userRes = await fetch(`/api/user-dashboard?userId=${encodeURIComponent(userId)}`);
+      if (userRes.ok) {
+        const data = await userRes.json();
+        if (data && data.widgets && Array.isArray(data.widgets) && data.widgets.length > 0) {
+          return {
+            dashboardId: data.dashboardId || dashId || undefined,
+            widgets: data.widgets,
+            salesData: Array.isArray(data.salesData) && data.salesData.length > 0 ? data.salesData : INITIAL_SALES_RECORDS,
+            dashboardTitle: data.dashboardTitle || 'แดชบอร์ดที่แชร์',
+            themeConfig: data.themeConfig || {
+              preset: 'violet',
+              primaryColor: '#7c3aed',
+              fontFamily: 'Prompt',
+              borderRadius: 'rounded-lg',
+              shadowStyle: 'shadow-sm',
+            },
+            filterState: data.filterState,
+            connectionConfig: data.connectionConfig,
+            spacingMode: data.spacingMode || 'ปกติ',
+            lastSavedAt: data.lastSavedAt || '',
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Fallback to local cache if viewer is on same device
+  if (userId) {
+    const local = loadUserDashboard(userId);
+    if (local && local.widgets && local.widgets.length > 0) {
+      return local;
+    }
+  }
+
+  return null;
+}
+
 // Save Project: Layout, Charts, Filters, Widgets, Theme, Data Mapping (Per-User Isolation)
 export function saveUserDashboard(
   userId: string,
@@ -290,6 +367,20 @@ export function saveUserDashboard(
   saveDashboardToServerFile(userId, payload).catch((err) => {
     console.warn('Server file save notice:', err);
   });
+
+  // Sync to shared dashboard hub so viewers on any machine can load this exact customized dashboard
+  try {
+    fetch('/api/shared-dashboards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        userId,
+        dashboardId: dId,
+        salesData: data.salesData || [],
+      }),
+    }).catch(() => {});
+  } catch (e) {}
 
   // 3. Persist to Cloud Database (Lean template & graph settings with non-blocking sync)
   const dbPayload: DBDashboard = {
