@@ -181,30 +181,12 @@ export async function refreshUserLiveData(
   return result;
 }
 
-// Asynchronous Cloud Database loader with fast local-first fallback
+// Asynchronous Cloud Database & Server File loader with single source of truth across all devices
 export async function loadUserDashboardFromCloud(userId: string): Promise<UserDashboardData | null> {
-  // 1. Return fast local cache immediately if available
-  const localCached = loadUserDashboard(userId);
-  if (localCached) {
-    // Non-blocking background verification from server file / cloud
-    loadDashboardFromServerFile(userId).then((serverData) => {
-      if (serverData && serverData.widgets && serverData.widgets.length > 0) {
-        try {
-          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(serverData));
-          if (serverData.salesData && serverData.salesData.length > 0) {
-            localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(serverData.salesData));
-          }
-        } catch (e) {}
-      }
-    }).catch(() => {});
-
-    return localCached;
-  }
-
-  // 2. Query Server File Storage API (works across different computers and browsers!)
+  // 1. Query Server File Storage API first (Authoritative source across all computers and browsers!)
   try {
     const serverFile = await loadDashboardFromServerFile(userId);
-    if (serverFile && serverFile.widgets && serverFile.widgets.length > 0) {
+    if (serverFile && serverFile.widgets && Array.isArray(serverFile.widgets) && serverFile.widgets.length > 0) {
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(serverFile));
@@ -219,10 +201,10 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
     console.warn('Server file loader notice', err);
   }
 
-  // 3. If not in server file, query IndexedDB / Cloud
+  // 2. Query Cloud Database (Firestore / IndexedDB)
   try {
     const latest = await dbGetLatestDashboard(userId);
-    if (latest && latest.dashboardConfig) {
+    if (latest && latest.dashboardConfig && latest.dashboardConfig.widgets && latest.dashboardConfig.widgets.length > 0) {
       const data: UserDashboardData = {
         dashboardId: latest.dashboardId,
         widgets: latest.dashboardConfig.widgets || INITIAL_WIDGETS,
@@ -241,13 +223,21 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
         lastSavedAt: new Date(latest.updatedDate).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
       };
       if (typeof window !== 'undefined') {
-        localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(data));
-        localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(data.salesData));
+        try {
+          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(data));
+          localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(data.salesData));
+        } catch (e) {}
       }
       return data;
     }
   } catch (err) {
     console.warn('Load user dashboard from cloud warning:', err);
+  }
+
+  // 3. Fallback to local cache if network/server unavailable
+  const localCached = loadUserDashboard(userId);
+  if (localCached && localCached.widgets && localCached.widgets.length > 0) {
+    return localCached;
   }
 
   return null;

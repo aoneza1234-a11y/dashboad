@@ -286,6 +286,109 @@ function dashboardFileStoragePlugin(): Plugin {
         }
       });
 
+      // API: Active Unified Session (Syncs active user account across all devices and browsers)
+      server.middlewares.use('/api/session', async (req, res) => {
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const sessionFile = path.join(storageDir, 'active_session.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) {
+            fs.mkdirSync(storageDir, { recursive: true });
+          }
+
+          const defaultSession = {
+            currentUserId: 'usr-admin-primary',
+            user: {
+              userId: 'usr-admin-primary',
+              id: 'usr-admin-primary',
+              email: 'aoneza1234@gmail.com',
+              name: 'Thirawat (เจ้าของระบบ)',
+              displayName: 'Thirawat (เจ้าของระบบ)',
+              role: 'admin',
+              department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
+              createdDate: '2026-01-01T00:00:00.000Z',
+              createdAt: '2026-01-01',
+              lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
+            },
+          };
+
+          if (req.method === 'GET') {
+            if (fs.existsSync(sessionFile)) {
+              try {
+                const content = fs.readFileSync(sessionFile, 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(content);
+                return;
+              } catch (e) {}
+            }
+            fs.writeFileSync(sessionFile, JSON.stringify(defaultSession, null, 2), 'utf-8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(defaultSession));
+            return;
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body);
+                const u = parsed.user || parsed;
+                const userId = u.userId || u.id || parsed.currentUserId || 'usr-admin-primary';
+                const sessionPayload = {
+                  currentUserId: userId,
+                  user: {
+                    ...u,
+                    id: userId,
+                    userId: userId,
+                    displayName: u.displayName || u.name,
+                  },
+                  updatedAt: new Date().toISOString(),
+                };
+                fs.writeFileSync(sessionFile, JSON.stringify(sessionPayload, null, 2), 'utf-8');
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, ...sessionPayload }));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          if (req.method === 'DELETE') {
+            if (fs.existsSync(sessionFile)) {
+              fs.unlinkSync(sessionFile);
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: true, message: 'Session reset' }));
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
+
       // API: Site Status (Global Online/Offline across all browsers)
       server.middlewares.use('/api/site-status', async (req, res) => {
         const storageDir = path.resolve(process.cwd(), 'data/storage');

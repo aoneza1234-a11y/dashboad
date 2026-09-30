@@ -1,0 +1,15 @@
+{
+  "currentUserId": "usr-admin-primary",
+  "user": {
+    "userId": "usr-admin-primary",
+    "id": "usr-admin-primary",
+    "email": "aoneza1234@gmail.com",
+    "name": "Thirawat (เจ้าของระบบ)",
+    "displayName": "Thirawat (เจ้าของระบบ)",
+    "role": "admin",
+    "department": "ผู้ดูแลระบบและวิเคราะห์ข้อมูล",
+    "createdDate": "2026-01-01T00:00:00.000Z",
+    "createdAt": "2026-01-01",
+    "lastLoginAt": "เพิ่งเข้าสู่ระบบ"
+  }
+}

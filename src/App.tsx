@@ -50,7 +50,7 @@ import {
   TeamUser,
   DashboardTemplate,
 } from './types';
-import { getCurrentUser, logoutTeamUser, loginTeamUserAsync } from './services/teamAuthStore';
+import { getCurrentUser, logoutTeamUser, loginTeamUserAsync, syncSessionFromServer } from './services/teamAuthStore';
 import {
   saveUserDashboard,
   loadUserDashboard,
@@ -66,6 +66,7 @@ import { dbGetAllUsers } from './services/cloudDatabase';
 import {
   exportDashboardToFile,
   importDashboardFromFile,
+  loadDashboardFromServerFile,
 } from './services/fileStorageService';
 import { applyGlobalFilters, autoOrganizeWidgets } from './utils/calcEngine';
 import { INITIAL_SALES_RECORDS, INITIAL_WIDGETS } from './data/sampleData';
@@ -623,29 +624,80 @@ export default function App() {
     ]
   );
 
-  // Mount effect: verify background server/cloud sync if needed, and unlock auto-save
+  // Mount effect: Sync active unified session across devices/browsers, then fetch their latest saved dashboard
   useEffect(() => {
     let isMounted = true;
-    if (currentTeamUser?.id) {
-      loadUserDashboardFromCloud(currentTeamUser.id)
-        .then((cloudData) => {
-          if (isMounted && cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
-            applyDashboardData(cloudData);
+
+    syncSessionFromServer()
+      .then((sessionUser) => {
+        if (!isMounted) return;
+        const targetUser = sessionUser || currentTeamUser;
+        if (targetUser?.id) {
+          if (sessionUser && sessionUser.id !== currentTeamUser?.id) {
+            setCurrentTeamUser(sessionUser);
           }
-        })
-        .finally(() => {
-          if (isMounted) {
-            setTimeout(() => {
-              isPopulatingUserDataRef.current = false;
-            }, 300);
-          }
-        });
-    } else {
-      isPopulatingUserDataRef.current = false;
+          loadUserDashboardFromCloud(targetUser.id)
+            .then((cloudData) => {
+              if (isMounted && cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
+                applyDashboardData(cloudData);
+              }
+            })
+            .finally(() => {
+              if (isMounted) {
+                setTimeout(() => {
+                  isPopulatingUserDataRef.current = false;
+                }, 300);
+              }
+            });
+        } else {
+          isPopulatingUserDataRef.current = false;
+        }
+      })
+      .catch(() => {
+        if (currentTeamUser?.id) {
+          loadUserDashboardFromCloud(currentTeamUser.id)
+            .then((cloudData) => {
+              if (isMounted && cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
+                applyDashboardData(cloudData);
+              }
+            })
+            .finally(() => {
+              if (isMounted) {
+                setTimeout(() => {
+                  isPopulatingUserDataRef.current = false;
+                }, 300);
+              }
+            });
+        } else {
+          isPopulatingUserDataRef.current = false;
+        }
+      });
+
+    // On window focus, check if user session or dashboard was updated on another browser/device
+    const handleFocusSync = () => {
+      syncSessionFromServer().then((sessionUser) => {
+        const u = sessionUser || currentTeamUser;
+        if (u?.id && !isPopulatingUserDataRef.current) {
+          loadDashboardFromServerFile(u.id).then((serverDash) => {
+            if (serverDash && serverDash.widgets && serverDash.widgets.length > 0) {
+              if (serverDash.dashboardTitle !== dashboardTitle || serverDash.widgets.length !== widgets.length) {
+                applyDashboardData(serverDash);
+              }
+            }
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocusSync);
     }
 
     return () => {
       isMounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleFocusSync);
+      }
     };
   }, []);
 
@@ -1151,15 +1203,20 @@ export default function App() {
   }
 
   if (viewMode === 'public_viewer') {
-    // Check if website is closed for maintenance
-    if (!siteStatus.isOnline) {
+    // Check if website is closed for maintenance across all systems
+    if (!siteStatus.isOnline && !adminBypass) {
       return (
         <MaintenanceScreen
           status={siteStatus}
           onRefresh={() => {
             fetchSiteStatusFromServer().then(setSiteStatus);
           }}
-          onBypass={() => {}}
+          onBypass={() => {
+            setAdminBypass(true);
+          }}
+          onAdminPortal={() => {
+            handleNavigateToDevAdmin();
+          }}
         />
       );
     }
@@ -1185,15 +1242,21 @@ export default function App() {
   }
 
   // Studio Portal (User Portal)
-  // 1. If website is turned off by Admin: Completely blocked across all browsers for normal users and visitors!
-  if (!siteStatus.isOnline && currentTeamUser?.role !== 'admin') {
+  // 1. Master System Shutdown: When website is closed, close it across ALL browsers, devices, and viewers!
+  // Unless explicitly unlocked with Admin PIN (adminBypass) or in dev console (/dev)
+  if (!siteStatus.isOnline && !adminBypass && viewMode !== 'dev_console') {
     return (
       <MaintenanceScreen
         status={siteStatus}
         onRefresh={() => {
           fetchSiteStatusFromServer().then(setSiteStatus);
         }}
-        onBypass={() => {}}
+        onBypass={() => {
+          setAdminBypass(true);
+        }}
+        onAdminPortal={() => {
+          handleNavigateToDevAdmin();
+        }}
       />
     );
   }
@@ -1206,8 +1269,8 @@ export default function App() {
         backgroundColor: themeStyles.canvasBg,
       }}
     >
-      {/* If site is offline, display admin alert banner ONLY for logged-in admins */}
-      {!siteStatus.isOnline && currentTeamUser?.role === 'admin' && (
+      {/* If site is offline, display admin alert banner ONLY when unlocked by admin */}
+      {!siteStatus.isOnline && (adminBypass || currentTeamUser?.role === 'admin') && (
         <div className="bg-gradient-to-r from-rose-900 via-amber-900 to-rose-900 text-white text-xs py-2 px-4 text-center font-bold flex flex-wrap items-center justify-between gap-2 shadow-lg shrink-0 z-50 border-b border-rose-500/40">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />

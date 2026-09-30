@@ -1,0 +1,42 @@
+[
+  {
+    "userId": "usr-admin-primary",
+    "email": "aoneza1234@gmail.com",
+    "password": "password123",
+    "name": "Thirawat (เจ้าของระบบ)",
+    "role": "admin",
+    "department": "ผู้ดูแลระบบและวิเคราะห์ข้อมูล",
+    "createdDate": "2026-01-01T00:00:00.000Z",
+    "lastLoginAt": "เพิ่งเข้าสู่ระบบ"
+  },
+  {
+    "userId": "usr-admin-1",
+    "email": "aoneza953@gmail.com",
+    "password": "password123",
+    "name": "Thirawat (ผู้ดูแลระบบ)",
+    "role": "admin",
+    "department": "Management & IT",
+    "createdDate": "2026-01-15T00:00:00.000Z",
+    "lastLoginAt": "วันนี้ 15:30"
+  },
+  {
+    "userId": "usr-editor-1",
+    "email": "komsan.m@team.internal",
+    "password": "password123",
+    "name": "Komsan (ผู้ใช้งานทั่วไป)",
+    "role": "editor",
+    "department": "Marketing Strategy",
+    "createdDate": "2026-02-10T00:00:00.000Z",
+    "lastLoginAt": "วันนี้ 10:15"
+  },
+  {
+    "userId": "usr-editor-2",
+    "email": "nattapong.s@team.internal",
+    "password": "password123",
+    "name": "Nattapong (ทีมงานขาย)",
+    "role": "editor",
+    "department": "Regional Sales",
+    "createdDate": "2026-02-20T00:00:00.000Z",
+    "lastLoginAt": "เมื่อวาน 16:45"
+  }
+]

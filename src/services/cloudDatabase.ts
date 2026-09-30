@@ -294,7 +294,7 @@ export async function seedInitialDatabase(): Promise<void> {
   }
 }
 
-// Register User (Instant Local-First with Server Persistent Sync)
+// Register User (Cloud Firestore as Primary Authority + Multi-Browser Sync)
 export async function dbRegisterUser(
   name: string,
   email: string,
@@ -304,7 +304,16 @@ export async function dbRegisterUser(
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user exists in local cache or IDB immediately (<2ms)
+    // 1. Check if user already exists in Cloud Firestore or local cache
+    if (db) {
+      try {
+        const snap = await getDocs(query(collection(db, 'users'), where('email', '==', normalizedEmail)));
+        if (!snap.empty) {
+          return { success: false, error: 'อีเมลนี้ถูกลงทะเบียนไว้ในระบบแล้ว กรุณาเข้าสู่ระบบ' };
+        }
+      } catch (e) {}
+    }
+
     const allUsers = await dbGetAllUsers();
     if (allUsers.some((u) => u.email.toLowerCase() === normalizedEmail)) {
       return { success: false, error: 'อีเมลนี้ถูกลงทะเบียนไว้ในระบบแล้ว กรุณาเข้าสู่ระบบ' };
@@ -321,21 +330,26 @@ export async function dbRegisterUser(
       lastLoginAt: 'เพิ่งสมัคร',
     };
 
-    // 1. Save to Server File System API (/api/users)
+    // 2. Save directly to Cloud Firestore (Global truth across all machines and devices!)
+    if (db) {
+      try {
+        await setDoc(doc(db, 'users', newUser.userId), sanitizeForFirestore(newUser));
+      } catch (cloudErr) {
+        console.warn('Firestore user write warning:', cloudErr);
+      }
+    }
+
+    // 3. Save to Server File System API (/api/users)
     try {
       await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser),
       });
-    } catch (serverErr) {
-      console.warn('Server user sync warning', serverErr);
-    }
+    } catch (serverErr) {}
 
-    // 2. Save to IDB immediately
+    // 4. Save to IDB & localStorage
     await idbPut('users', newUser);
-
-    // 3. Save to localStorage immediately
     if (typeof window !== 'undefined') {
       try {
         const teamUsersRaw = localStorage.getItem('bi_studio_team_users_v2');
@@ -360,17 +374,17 @@ export async function dbRegisterUser(
       } catch (e) {}
     }
 
-    // 4. Set as active session immediately
+    // 5. Set as active session
     await dbSetCurrentSessionUser(newUser);
 
-    // 5. Create isolated starter dashboard for this new user in local cache immediately
+    // 6. Create starter dashboard in Cloud Firestore and local
     const starterDashboard: DBDashboard = {
       dashboardId: `dash-${newUser.userId}-starter`,
       userId: newUser.userId,
       dashboardName: `แดชบอร์ดของ ${newUser.name}`,
       dashboardConfig: {
         widgets: INITIAL_WIDGETS,
-        salesData: [], // Lean template
+        salesData: INITIAL_SALES_RECORDS,
         themeConfig: {
           preset: 'violet',
           primaryColor: '#7c3aed',
@@ -383,6 +397,14 @@ export async function dbRegisterUser(
       createdDate: new Date().toISOString(),
       updatedDate: new Date().toISOString(),
     };
+
+    if (db) {
+      try {
+        await setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), sanitizeForFirestore(starterDashboard));
+        await setDoc(doc(db, 'dashboards', 'latest_' + newUser.userId), sanitizeForFirestore(starterDashboard));
+      } catch (e) {}
+    }
+
     await idbPut('dashboards', starterDashboard);
     if (typeof window !== 'undefined') {
       try {
@@ -399,31 +421,13 @@ export async function dbRegisterUser(
       } catch (e) {}
     }
 
-    // 6. Non-blocking fire-and-forget sync to Firestore if available
-    if (isFirestoreAvailable && db) {
-      withTimeout(setDoc(doc(db, 'users', newUser.userId), sanitizeForFirestore(newUser)), 800).catch((err) => {
-        disableFirestoreIfMissing(err);
-      });
-
-      const lightDashboard = {
-        ...starterDashboard,
-        dashboardConfig: {
-          ...starterDashboard.dashboardConfig,
-          salesData: [],
-        },
-      };
-      withTimeout(setDoc(doc(db, 'dashboards', starterDashboard.dashboardId), sanitizeForFirestore(lightDashboard)), 800).catch((err) => {
-        disableFirestoreIfMissing(err);
-      });
-    }
-
     return { success: true, user: newUser };
   } catch (error: any) {
     return { success: false, error: error?.message || 'เกิดข้อผิดพลาดในการลงทะเบียน' };
   }
 }
 
-// Login User (Instant Server Match with Local Fallback)
+// Login User (Cloud Firestore First for cross-device authentication)
 export async function dbLoginUser(
   email: string,
   password?: string
@@ -431,66 +435,43 @@ export async function dbLoginUser(
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // 1. Try Server API first so accounts work seamlessly across devices
-    try {
-      const serverRes = await fetch('/api/users?action=login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, password }),
-      });
-      if (serverRes.ok) {
-        const data = await serverRes.json();
-        if (data.success && data.user) {
-          const user = data.user as DBUser;
-          await idbPut('users', user);
-          await dbSetCurrentSessionUser(user);
-          return { success: true, user };
-        }
-      }
-    } catch {
-      // Server network timeout or offline - seamlessly proceed to local check
-    }
-
-    // 2. Check local IDB and localStorage fallback (<5ms)
-    let allUsers = await idbGetAll<DBUser>('users');
-    if (!allUsers || allUsers.length === 0) {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('bi_studio_team_users_v2');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          allUsers = parsed.map((p: any) => ({
-            userId: p.id,
-            email: p.email,
-            password: p.password || 'password123',
-            name: p.name || p.displayName,
-            role: p.role,
-            department: p.department,
-            createdDate: p.createdAt,
-            lastLoginAt: p.lastLoginAt,
-          }));
-        }
-      }
-    }
-    if (!allUsers || allUsers.length === 0) {
-      allUsers = DEFAULT_USERS;
-    }
-
-    let found = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-    // If not found locally, try Firestore with strict timeout if available
-    if (!found && isFirestoreAvailable && db) {
+    // 1. Check Cloud Firestore FIRST so any account registered on any device logs in instantly
+    let found: DBUser | null = null;
+    if (db) {
       try {
-        const snap = await withTimeout(
-          getDocs(query(collection(db, 'users'), where('email', '==', normalizedEmail))),
-          800
-        );
-        if (snap && !snap.empty) {
+        const snap = await getDocs(query(collection(db, 'users'), where('email', '==', normalizedEmail)));
+        if (!snap.empty) {
           found = snap.docs[0].data() as DBUser;
-          idbPut('users', found);
         }
       } catch (e) {
-        disableFirestoreIfMissing(e);
+        console.warn('Firestore login check error:', e);
       }
+    }
+
+    // 2. Try Server API
+    if (!found) {
+      try {
+        const serverRes = await fetch('/api/users?action=login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalizedEmail, password }),
+        });
+        if (serverRes.ok) {
+          const data = await serverRes.json();
+          if (data.success && data.user) {
+            found = data.user as DBUser;
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Fallback to Local IDB & Defaults
+    if (!found) {
+      let allUsers = await idbGetAll<DBUser>('users');
+      if (!allUsers || allUsers.length === 0) {
+        allUsers = DEFAULT_USERS;
+      }
+      found = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
     }
 
     if (!found) {
@@ -514,21 +495,19 @@ export async function dbLoginUser(
       lastLoginAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Save locally immediately
+    // Save everywhere
     await idbPut('users', updated);
     await dbSetCurrentSessionUser(updated);
 
-    // Sync to Server API
+    if (db) {
+      setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore(updated), { merge: true }).catch(() => {});
+    }
+
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     }).catch(() => {});
-
-    // Non-blocking Firestore update if available
-    if (isFirestoreAvailable && db) {
-      withTimeout(setDoc(doc(db, 'users', updated.userId), sanitizeForFirestore(updated), { merge: true }), 1000).catch(() => {});
-    }
 
     return { success: true, user: updated };
   } catch (error: any) {

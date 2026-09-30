@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db, isFirestoreAvailable } from './cloudDatabase';
+import { db } from './cloudDatabase';
 
 export interface ViewerShareConfig {
   passwordEnabled: boolean;
@@ -46,7 +46,7 @@ const STORAGE_KEY = 'bi_studio_site_status_v2';
 const ADMIN_SESSION_KEY = 'bi_studio_admin_auth_v1';
 const BROADCAST_CHANNEL_NAME = 'bi_studio_global_site_status_channel';
 
-const DEFAULT_STATUS: SiteStatus = {
+export const DEFAULT_STATUS: SiteStatus = {
   platformName: 'Studio BI Analytics',
   platformSubtitle: 'ระบบบริหารและวิเคราะห์แดชบอร์ดอัจฉริยะ',
   isOnline: true,
@@ -125,20 +125,17 @@ export function getSiteStatus(): SiteStatus {
       };
       return cachedStatus;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_STATUS));
-    return DEFAULT_STATUS;
+    return cachedStatus || DEFAULT_STATUS;
   } catch (err) {
-    console.error('Error loading site status:', err);
     return cachedStatus || DEFAULT_STATUS;
   }
 }
 
-// Fetch latest site status from the shared Server API (/api/site-status)
+// Fetch latest site status directly from Server and Cloud Firestore as the single source of truth across all devices
 export async function fetchSiteStatusFromServer(): Promise<SiteStatus> {
+  // 1. Ultra-fast Server API query (<5ms)
   try {
-    const res = await fetch('/api/site-status', {
-      headers: { 'Cache-Control': 'no-cache' },
-    });
+    const res = await fetch('/api/site-status', { headers: { 'Cache-Control': 'no-cache' } });
     if (res.ok) {
       const data: SiteStatus = await res.json();
       if (data && typeof data.isOnline === 'boolean') {
@@ -149,7 +146,7 @@ export async function fetchSiteStatusFromServer(): Promise<SiteStatus> {
           cmsSettings: { ...DEFAULT_STATUS.cmsSettings, ...(data.cmsSettings || {}) },
           securitySettings: { ...DEFAULT_STATUS.securitySettings, ...(data.securitySettings || {}) },
         };
-        const prevStatus = getSiteStatus();
+        const prevStatus = cachedStatus;
         const changed = prevStatus.isOnline !== merged.isOnline || prevStatus.updatedAt !== merged.updatedAt;
 
         cachedStatus = merged;
@@ -164,37 +161,49 @@ export async function fetchSiteStatusFromServer(): Promise<SiteStatus> {
         return merged;
       }
     }
-  } catch (e) {
-    // Non-blocking fallback
-  }
+  } catch {}
 
-  // Also check Firestore if available
-  if (isFirestoreAvailable && db) {
+  // 2. Cloud Firestore with strict timeout fallback
+  if (db) {
     try {
-      const snap = await getDoc(doc(db, 'system', 'site_status'));
-      if (snap.exists()) {
+      const fetchPromise = getDoc(doc(db, 'system', 'site_status'));
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 800));
+      const snap: any = await Promise.race([fetchPromise, timeoutPromise]);
+
+      if (snap && snap.exists && snap.exists()) {
         const cloudData = snap.data() as SiteStatus;
         if (cloudData && typeof cloudData.isOnline === 'boolean') {
-          cachedStatus = {
+          const merged: SiteStatus = {
             ...DEFAULT_STATUS,
             ...cloudData,
+            viewerConfig: { ...DEFAULT_STATUS.viewerConfig, ...(cloudData.viewerConfig || {}) },
+            cmsSettings: { ...DEFAULT_STATUS.cmsSettings, ...(cloudData.cmsSettings || {}) },
+            securitySettings: { ...DEFAULT_STATUS.securitySettings, ...(cloudData.securitySettings || {}) },
           };
+          const prevStatus = cachedStatus;
+          const changed = prevStatus.isOnline !== merged.isOnline || prevStatus.updatedAt !== merged.updatedAt;
+
+          cachedStatus = merged;
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedStatus));
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
             } catch {}
-            window.dispatchEvent(new CustomEvent('site_status_changed', { detail: cachedStatus }));
+            if (changed) {
+              window.dispatchEvent(new CustomEvent('site_status_changed', { detail: merged }));
+            }
           }
-          return cachedStatus;
+          return merged;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Firestore fetch site status warning:', err);
+    }
   }
 
   return getSiteStatus();
 }
 
-// Save site status: Persists to Server API, Cloud Firestore, LocalStorage, and broadcasts across all tabs/windows
+// Save site status: Writes to Server API and Cloud Firestore so all browsers anywhere see it instantly
 export function saveSiteStatus(status: Partial<SiteStatus>): SiteStatus {
   const current = getSiteStatus();
   const updated: SiteStatus = {
@@ -221,18 +230,22 @@ export function saveSiteStatus(status: Partial<SiteStatus>): SiteStatus {
     }
   }
 
-  // 3. Persist to shared Server API (/api/site-status) - instantly synchronizes across all users & browsers!
+  // 3. Fast Server API update (Immediate single source of truth across all devices)
   fetch('/api/site-status', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updated),
-  }).catch((err) => {
-    console.warn('Sync site status to server warning:', err);
-  });
+  }).catch((e) => console.warn('Server site-status post notice', e));
 
-  // 4. Non-blocking Firestore sync
-  if (isFirestoreAvailable && db) {
-    setDoc(doc(db, 'system', 'site_status'), JSON.parse(JSON.stringify(updated)), { merge: true }).catch(() => {});
+  // 4. Primary Cloud Firestore real-time sync
+  if (db) {
+    setDoc(doc(db, 'system', 'site_status'), JSON.parse(JSON.stringify(updated)), { merge: true })
+      .then(() => {
+        console.log('Global Firestore site_status updated to isOnline:', updated.isOnline);
+      })
+      .catch((err) => {
+        console.error('Firestore save site_status error:', err);
+      });
   }
 
   return updated;
@@ -248,38 +261,57 @@ export function toggleSiteOnline(isOnline?: boolean): SiteStatus {
   });
 }
 
-// Active real-time subscription for all browsers
-// Starts polling every 2.5s and listens to Firestore + BroadcastChannel
+// Active real-time subscription for all browsers via server polling + Firestore onSnapshot
+// Every browser and device will instantly shut down or open in lockstep!
 export function startSiteStatusSync(onUpdate: (status: SiteStatus) => void): () => void {
-  // Initial immediate fetch
+  // Initial immediate fetch from Server & Firestore
   fetchSiteStatusFromServer().then(onUpdate).catch(() => {});
 
-  // Poll server API every 2.5 seconds to detect site shutdown from ANY other browser
+  let unsubscribeFirestore: (() => void) | null = null;
+  if (db) {
+    try {
+      unsubscribeFirestore = onSnapshot(
+        doc(db, 'system', 'site_status'),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as SiteStatus;
+            if (data && typeof data.isOnline === 'boolean') {
+              const merged: SiteStatus = {
+                ...DEFAULT_STATUS,
+                ...data,
+                viewerConfig: { ...DEFAULT_STATUS.viewerConfig, ...(data.viewerConfig || {}) },
+                cmsSettings: { ...DEFAULT_STATUS.cmsSettings, ...(data.cmsSettings || {}) },
+                securitySettings: { ...DEFAULT_STATUS.securitySettings, ...(data.securitySettings || {}) },
+              };
+              cachedStatus = merged;
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+                } catch {}
+                window.dispatchEvent(new CustomEvent('site_status_changed', { detail: merged }));
+              }
+              onUpdate(merged);
+            }
+          }
+        },
+        (err) => {
+          console.warn('Firestore site_status listener warning:', err);
+        }
+      );
+    } catch (e) {
+      console.warn('Firestore onSnapshot init error:', e);
+    }
+  }
+
+  // Active fast poll every 1 second (1000ms) to ensure instant synchronization across all devices
   const intervalId = setInterval(() => {
     fetchSiteStatusFromServer().then(onUpdate).catch(() => {});
-  }, 2500);
+  }, 1000);
 
-  // Real-time Firestore snapshot listener if available
-  let unsubscribeFirestore: (() => void) | null = null;
-  if (isFirestoreAvailable && db) {
-    try {
-      unsubscribeFirestore = onSnapshot(doc(db, 'system', 'site_status'), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data() as SiteStatus;
-          if (data && typeof data.isOnline === 'boolean') {
-            cachedStatus = { ...DEFAULT_STATUS, ...data };
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedStatus));
-              } catch {}
-              window.dispatchEvent(new CustomEvent('site_status_changed', { detail: cachedStatus }));
-            }
-            onUpdate(cachedStatus);
-          }
-        }
-      }, () => {});
-    } catch {}
-  }
+  // Instant sync on tab focus or visibility change
+  const handleWindowFocus = () => {
+    fetchSiteStatusFromServer().then(onUpdate).catch(() => {});
+  };
 
   const handleCustomEvent = (e: Event) => {
     const customEvent = e as CustomEvent<SiteStatus>;
@@ -292,15 +324,21 @@ export function startSiteStatusSync(onUpdate: (status: SiteStatus) => void): () 
 
   if (typeof window !== 'undefined') {
     window.addEventListener('site_status_changed', handleCustomEvent);
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleWindowFocus);
   }
 
   return () => {
     clearInterval(intervalId);
     if (unsubscribeFirestore) {
-      try { unsubscribeFirestore(); } catch {}
+      try {
+        unsubscribeFirestore();
+      } catch {}
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener('site_status_changed', handleCustomEvent);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleWindowFocus);
     }
   };
 }

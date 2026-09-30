@@ -24,7 +24,7 @@ import { VisualWidget, SalesRecord, FilterState, SheetConnectionConfig } from '.
 import { ThemeStyles } from '../utils/themeStyles';
 import { DynamicWidgetCard } from './DynamicWidgetCard';
 import { InlineFilterBar } from './InlineFilterBar';
-import { getSiteStatus, incrementViewerCount, startSiteStatusSync } from '../services/siteStatusStore';
+import { getSiteStatus, incrementViewerCount, startSiteStatusSync, fetchSiteStatusFromServer } from '../services/siteStatusStore';
 import { MaintenanceScreen } from './MaintenanceScreen';
 
 interface PublicViewerPortalProps {
@@ -95,8 +95,10 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
     return (
       <MaintenanceScreen
         status={siteStatus}
-        onRefresh={() => setSiteStatus(getSiteStatus())}
-        onBypass={() => {}}
+        onRefresh={() => fetchSiteStatusFromServer().then(setSiteStatus)}
+        onBypass={() => {
+          fetchSiteStatusFromServer().then(setSiteStatus);
+        }}
       />
     );
   }

@@ -56,6 +56,37 @@ export function getCurrentSessionUser(): TeamUser | null {
 
 export const getCurrentUser = getCurrentSessionUser;
 
+export async function syncSessionFromServer(): Promise<TeamUser | null> {
+  try {
+    const res = await fetch('/api/session', { headers: { 'Cache-Control': 'no-cache' } });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.user) {
+        const u = data.user;
+        const teamUser: TeamUser = {
+          id: u.userId || u.id,
+          email: u.email,
+          displayName: u.displayName || u.name,
+          name: u.name || u.displayName,
+          role: u.role || 'admin',
+          status: 'active',
+          department: u.department || 'ทีมทั่วไป',
+          createdAt: u.createdAt || u.createdDate || '2026-01-01',
+          lastLoginAt: u.lastLoginAt || 'เพิ่งเข้าสู่ระบบ',
+          assignedTemplateIds: ['tpl-1'],
+          password: u.password,
+        };
+        try {
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(teamUser));
+        } catch (e) {}
+        window.dispatchEvent(new CustomEvent('team_session_changed', { detail: teamUser }));
+        return teamUser;
+      }
+    }
+  } catch (e) {}
+  return getCurrentSessionUser();
+}
+
 export function setCurrentSessionUser(user: TeamUser | null): void {
   if (typeof window === 'undefined') return;
   try {
@@ -70,9 +101,29 @@ export function setCurrentSessionUser(user: TeamUser | null): void {
         department: user.department,
         createdDate: user.createdAt,
       });
+      // Sync to server active session API so all devices see this user
+      fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUserId: user.id,
+          user: {
+            userId: user.id,
+            id: user.id,
+            email: user.email,
+            name: user.displayName || user.name,
+            displayName: user.displayName || user.name,
+            role: user.role,
+            department: user.department,
+            createdAt: user.createdAt,
+            lastLoginAt: user.lastLoginAt,
+          },
+        }),
+      }).catch(() => {});
     } else {
       localStorage.setItem(SESSION_STORAGE_KEY, 'LOGGED_OUT');
       dbSetCurrentSessionUser(null);
+      fetch('/api/session', { method: 'DELETE' }).catch(() => {});
     }
     window.dispatchEvent(new CustomEvent('team_session_changed', { detail: user }));
   } catch (err) {
