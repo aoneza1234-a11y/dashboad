@@ -54,6 +54,7 @@ import {
 } from '../../services/siteStatusStore';
 import {
   getTeamUsers,
+  fetchAllTeamUsers,
   toggleUserBlockStatus,
   updateUserRole,
   deleteTeamUser,
@@ -145,11 +146,32 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
   useEffect(() => {
     fetchAdminDataSources();
+    fetchAllTeamUsers().then(setUsers).catch(console.warn);
+
+    const handleUsersUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setUsers(e.detail);
+      } else {
+        fetchAllTeamUsers().then(setUsers).catch(console.warn);
+      }
+    };
+    window.addEventListener('team_users_updated', handleUsersUpdate);
+
+    // Periodic sync with central database so new users/sessions from any browser appear automatically
+    const userInterval = setInterval(() => {
+      fetchAllTeamUsers().then(setUsers).catch(() => {});
+    }, 3000);
+
     const handleLogUpdate = () => {
       setActivityLogs(getActivityLogs());
     };
     window.addEventListener('activity_log_added', handleLogUpdate);
-    return () => window.removeEventListener('activity_log_added', handleLogUpdate);
+
+    return () => {
+      window.removeEventListener('team_users_updated', handleUsersUpdate);
+      window.removeEventListener('activity_log_added', handleLogUpdate);
+      clearInterval(userInterval);
+    };
   }, []);
 
   // New user form state
@@ -267,7 +289,9 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
       newUserDepartment || 'ทั่วไป'
     );
 
-    setUsers(getTeamUsers());
+    setTimeout(() => {
+      fetchAllTeamUsers().then(setUsers);
+    }, 100);
     setShowAddUserModal(false);
     setNewUserEmail('');
     setNewUserName('');
@@ -275,13 +299,17 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
 
   const handleToggleBlock = (userId: string) => {
     toggleUserBlockStatus(userId);
-    setUsers(getTeamUsers());
+    setTimeout(() => {
+      fetchAllTeamUsers().then(setUsers);
+    }, 100);
   };
 
   const handleDeleteUser = (userId: string) => {
     if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบบัญชีผู้ใช้นี้ออกจากระบบ?')) {
       deleteTeamUser(userId);
-      setUsers(getTeamUsers());
+      setTimeout(() => {
+        fetchAllTeamUsers().then(setUsers);
+      }, 100);
     }
   };
 
@@ -1465,6 +1493,52 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
           {/* SECTION: Users */}
           {activeSection === 'users' && (
             <div className="space-y-4 max-w-6xl">
+              {/* Central User Directory KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-[#181433] border border-violet-500/20 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">สมาชิกทั้งหมด (Central DB)</div>
+                    <div className="text-xl font-bold text-white mt-0.5">{users.length} คน</div>
+                  </div>
+                  <div className="w-9 h-9 rounded-lg bg-violet-600/20 text-violet-400 flex items-center justify-center font-bold">
+                    👥
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-[#181433] border border-emerald-500/20 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">สถานะปกติ (Active)</div>
+                    <div className="text-xl font-bold text-emerald-400 mt-0.5">
+                      {users.filter((u) => u.status === 'active').length} คน
+                    </div>
+                  </div>
+                  <div className="w-9 h-9 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold">
+                    ✓
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-[#181433] border border-rose-500/20 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">ถูกระงับ (Blocked / Inactive)</div>
+                    <div className="text-xl font-bold text-rose-400 mt-0.5">
+                      {users.filter((u) => u.status === 'blocked').length} คน
+                    </div>
+                  </div>
+                  <div className="w-9 h-9 rounded-lg bg-rose-600/20 text-rose-400 flex items-center justify-center font-bold">
+                    🚫
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-[#181433] border border-amber-500/20 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">ผู้ดูแลระบบ (Admin)</div>
+                    <div className="text-xl font-bold text-amber-400 mt-0.5">
+                      {users.filter((u) => u.role === 'admin').length} คน
+                    </div>
+                  </div>
+                  <div className="w-9 h-9 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center font-bold">
+                    👑
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="relative">
@@ -1477,6 +1551,10 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                       className="bg-[#1c163b] border border-violet-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none w-64"
                     />
                   </div>
+                  <span className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ซิงค์ข้อมูลผู้ใช้จาก Cloud Database แบบเรียลไทม์
+                  </span>
                 </div>
 
                 <button
@@ -1498,6 +1576,7 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                       <th className="py-3 px-4">แผนก</th>
                       <th className="py-3 px-4">สิทธิ์ในระบบ</th>
                       <th className="py-3 px-4">สถานะบัญชี</th>
+                      <th className="py-3 px-4">เข้าสู่ระบบล่าสุด</th>
                       <th className="py-3 px-4 text-right">การจัดการ</th>
                     </tr>
                   </thead>
@@ -1514,7 +1593,10 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                             <div className="w-7 h-7 rounded-lg bg-violet-600/30 flex items-center justify-center text-xs font-bold text-violet-300">
                               {user.displayName.charAt(0)}
                             </div>
-                            <span>{user.displayName}</span>
+                            <div>
+                              <span>{user.displayName}</span>
+                              <div className="text-[10px] text-slate-500 font-mono">ID: {user.id}</div>
+                            </div>
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-300">{user.email}</td>
                           <td className="py-3 px-4 text-slate-300">{user.department || '-'}</td>
@@ -1524,7 +1606,7 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                               onChange={(e) => {
                                 const newRole = e.target.value as 'admin' | 'editor' | 'viewer';
                                 updateUserRole(user.id, newRole);
-                                setUsers(getTeamUsers());
+                                setTimeout(() => fetchAllTeamUsers().then(setUsers), 100);
                               }}
                               className={`px-2 py-1 rounded-lg text-xs font-bold border cursor-pointer outline-none transition ${
                                 user.role === 'admin'
@@ -1546,6 +1628,10 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                             }`}>
                               {user.status === 'active' ? 'ปกติ (Active)' : 'ระงับการใช้งาน (Blocked)'}
                             </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-300 text-[11px]">
+                            <div>{user.lastLoginAt || 'เพิ่งเข้าสู่ระบบ'}</div>
+                            <div className="text-[10px] text-slate-500">สร้าง: {user.createdAt || '2026-01-01'}</div>
                           </td>
                           <td className="py-3 px-4 text-right space-x-2">
                             <button

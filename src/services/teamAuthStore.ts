@@ -244,79 +244,206 @@ export function loginTeamUser(
   return { success: true, user: generalUser };
 }
 
+export const DEFAULT_TEAM_USERS: TeamUser[] = [
+  {
+    id: 'usr-admin-primary',
+    name: 'Thirawat (เจ้าของระบบ)',
+    displayName: 'Thirawat (เจ้าของระบบ)',
+    email: 'aoneza1234@gmail.com',
+    role: 'admin',
+    status: 'active',
+    department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
+    createdAt: '2026-01-01',
+    lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
+    assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3'],
+  },
+  {
+    id: 'usr-admin-1',
+    name: 'Thirawat (ผู้ดูแลระบบ)',
+    displayName: 'Thirawat (ผู้ดูแลระบบ)',
+    email: 'aoneza953@gmail.com',
+    role: 'admin',
+    status: 'active',
+    department: 'ฝ่ายบริหาร & ไอที',
+    createdAt: '2026-01-15',
+    lastLoginAt: 'วันนี้ 15:30',
+    assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3', 'tpl-4'],
+  },
+  {
+    id: 'usr-sales-1',
+    name: 'ศิริพร ใจมั่น',
+    displayName: 'ศิริพร ใจมั่น',
+    email: 'siriporn.j@company.co.th',
+    role: 'editor',
+    status: 'active',
+    department: 'ฝ่ายขายและการตลาด',
+    createdAt: '2026-02-01',
+    lastLoginAt: 'เมื่อวานนี้',
+    assignedTemplateIds: ['tpl-1', 'tpl-2'],
+  },
+  {
+    id: 'usr-sales-2',
+    name: 'กิตติศักดิ์ พัฒนา',
+    displayName: 'กิตติศักดิ์ พัฒนา',
+    email: 'kittisak.p@company.co.th',
+    role: 'viewer',
+    status: 'active',
+    department: 'ทีมปฏิบัติการสาขา',
+    createdAt: '2026-02-10',
+    lastLoginAt: '3 วันที่แล้ว',
+    assignedTemplateIds: ['tpl-1'],
+  },
+  {
+    id: 'usr-editor-1',
+    name: 'Komsan (ผู้ใช้งานทั่วไป)',
+    displayName: 'Komsan (ผู้ใช้งานทั่วไป)',
+    email: 'komsan.m@team.internal',
+    role: 'editor',
+    status: 'active',
+    department: 'ฝ่ายกลยุทธ์การตลาด',
+    createdAt: '2026-02-10',
+    lastLoginAt: 'วันนี้ 10:15',
+    assignedTemplateIds: ['tpl-1', 'tpl-3'],
+  },
+  {
+    id: 'usr-editor-2',
+    name: 'Nattapong (ทีมงานขาย)',
+    displayName: 'Nattapong (ทีมงานขาย)',
+    email: 'nattapong.s@team.internal',
+    role: 'editor',
+    status: 'active',
+    department: 'ฝ่ายพัฒนาธุรกิจและงานขาย',
+    createdAt: '2026-02-20',
+    lastLoginAt: 'เมื่อวาน 16:45',
+    assignedTemplateIds: ['tpl-1'],
+  },
+  {
+    id: 'usr-editor-3',
+    name: 'วราภรณ์ ขจรศักดิ์',
+    displayName: 'วราภรณ์ ขจรศักดิ์',
+    email: 'waraporn.k@company.co.th',
+    role: 'editor',
+    status: 'active',
+    department: 'ฝ่ายบัญชีและการเงิน',
+    createdAt: '2026-02-25',
+    lastLoginAt: '4 วันที่แล้ว',
+    assignedTemplateIds: ['tpl-2'],
+  },
+];
+
+let cachedTeamUsers: TeamUser[] = DEFAULT_TEAM_USERS;
+
 export async function fetchAllTeamUsers(): Promise<TeamUser[]> {
-  const dbUsers = await dbGetAllUsers();
-  return dbUsers.map(mapDBUserToTeamUser);
+  // 1. Fetch from Central Server API (/api/users) - single source of truth across all devices
+  try {
+    const res = await fetch('/api/users', { headers: { 'Cache-Control': 'no-cache' } });
+    if (res.ok) {
+      const serverUsers = await res.json();
+      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+        const mapped: TeamUser[] = serverUsers.map((u: any) => ({
+          id: u.userId || u.id,
+          name: u.name || u.displayName || 'สมาชิก',
+          displayName: u.displayName || u.name || 'สมาชิก',
+          email: u.email || '',
+          role: u.role || 'editor',
+          status: u.status || 'active',
+          department: u.department || 'ทั่วไป',
+          createdAt: u.createdDate ? u.createdDate.split('T')[0] : '2026-01-01',
+          lastLoginAt: u.lastLoginAt || 'เพิ่งเข้าสู่ระบบ',
+          assignedTemplateIds: u.assignedTemplateIds || ['tpl-1'],
+          password: u.password,
+        }));
+
+        // Merge with default users so none are lost
+        const byId = new Map<string, TeamUser>();
+        for (const u of DEFAULT_TEAM_USERS) byId.set(u.id, u);
+        for (const u of mapped) byId.set(u.id, u);
+        const merged = Array.from(byId.values());
+
+        cachedTeamUsers = merged;
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(merged));
+            window.dispatchEvent(new CustomEvent('team_users_updated', { detail: merged }));
+          } catch {}
+        }
+        return merged;
+      }
+    }
+  } catch (err) {
+    console.warn('Server users fetch notice:', err);
+  }
+
+  // 2. Fetch from Cloud Database (Firestore / IDB)
+  try {
+    const dbUsers = await dbGetAllUsers();
+    if (dbUsers && dbUsers.length > 0) {
+      const mapped = dbUsers.map(mapDBUserToTeamUser);
+      const byId = new Map<string, TeamUser>();
+      for (const u of DEFAULT_TEAM_USERS) byId.set(u.id, u);
+      for (const u of mapped) byId.set(u.id, u);
+      const merged = Array.from(byId.values());
+      cachedTeamUsers = merged;
+      return merged;
+    }
+  } catch {}
+
+  return cachedTeamUsers || DEFAULT_TEAM_USERS;
+}
+
+// Initial fetch on module load
+if (typeof window !== 'undefined') {
+  fetchAllTeamUsers().catch(() => {});
 }
 
 export function getTeamUsers(): TeamUser[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return DEFAULT_TEAM_USERS;
   try {
     const raw = localStorage.getItem('bi_studio_team_users_v2');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Ensure all default users are present in merged list
+        const byId = new Map<string, TeamUser>();
+        for (const u of DEFAULT_TEAM_USERS) byId.set(u.id, u);
+        for (const u of parsed) byId.set(u.id, u);
+        cachedTeamUsers = Array.from(byId.values());
+        return cachedTeamUsers;
+      }
+    }
   } catch (e) {}
-  return [
-    {
-      id: 'usr-admin-1',
-      name: 'Thirawat (ผู้ดูแลระบบ)',
-      displayName: 'Thirawat (ผู้ดูแลระบบ)',
-      email: 'aoneza953@gmail.com',
-      role: 'admin',
-      status: 'active',
-      department: 'ฝ่ายบริหาร & ไอที',
-      createdAt: '2026-01-15',
-      lastLoginAt: 'วันนี้ 08:30',
-      assignedTemplateIds: ['tpl-1', 'tpl-2', 'tpl-3', 'tpl-4'],
-    },
-    {
-      id: 'usr-sales-1',
-      name: 'ศิริพร ใจมั่น',
-      displayName: 'ศิริพร ใจมั่น',
-      email: 'siriporn.j@company.co.th',
-      role: 'editor',
-      status: 'active',
-      department: 'ฝ่ายขายและการตลาด',
-      createdAt: '2026-02-01',
-      lastLoginAt: 'เมื่อวานนี้',
-      assignedTemplateIds: ['tpl-1', 'tpl-2'],
-    },
-    {
-      id: 'usr-sales-2',
-      name: 'กิตติศักดิ์ พัฒนา',
-      displayName: 'กิตติศักดิ์ พัฒนา',
-      email: 'kittisak.p@company.co.th',
-      role: 'viewer',
-      status: 'active',
-      department: 'ทีมปฏิบัติการสาขา',
-      createdAt: '2026-02-10',
-      lastLoginAt: '3 วันที่แล้ว',
-      assignedTemplateIds: ['tpl-1'],
-    },
-  ];
+  return cachedTeamUsers.length > 0 ? cachedTeamUsers : DEFAULT_TEAM_USERS;
 }
 
 export function saveTeamUsers(users: TeamUser[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
-    // Non-blocking sync to server API so changes persist across devices
-    for (const u of users) {
-      fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: u.id,
-          name: u.displayName || u.name,
-          email: u.email,
-          role: u.role,
-          status: u.status,
-          department: u.department,
-          password: u.password,
-        }),
-      }).catch(() => {});
+  cachedTeamUsers = users;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
+      window.dispatchEvent(new CustomEvent('team_users_updated', { detail: users }));
+    } catch (e) {
+      console.warn(e);
     }
-  } catch (e) {
-    console.warn(e);
+  }
+
+  // Sync each user to Central Server API & Cloud Database
+  for (const u of users) {
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: u.id,
+        id: u.id,
+        name: u.displayName || u.name,
+        displayName: u.displayName || u.name,
+        email: u.email,
+        role: u.role,
+        status: u.status,
+        department: u.department,
+        password: u.password,
+        assignedTemplateIds: u.assignedTemplateIds || ['tpl-1'],
+      }),
+    }).catch(() => {});
   }
 }
 
@@ -345,7 +472,20 @@ export function updateUserRole(userId: string, newRole: TeamUserRole): TeamUser[
 
 export function deleteTeamUser(userId: string): TeamUser[] {
   const users = getTeamUsers().filter((u) => u.id !== userId);
-  saveTeamUsers(users);
+  cachedTeamUsers = users;
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
+      window.dispatchEvent(new CustomEvent('team_users_updated', { detail: users }));
+    } catch {}
+  }
+
+  // Delete from Server API
+  fetch(`/api/users?userId=${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  }).catch(() => {});
+
   return users;
 }
 

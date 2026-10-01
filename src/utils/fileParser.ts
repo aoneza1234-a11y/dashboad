@@ -119,3 +119,67 @@ export async function parseExcelOrCsvFile(file: File): Promise<ParseResult> {
     totalRows: records.length,
   };
 }
+
+export interface SharedUrlParseResult extends ParseResult {
+  sheetNames?: string[];
+  sourceUrl?: string;
+}
+
+export async function parseExcelFromSharedUrl(
+  url: string,
+  sheetName?: string
+): Promise<SharedUrlParseResult> {
+  const cleanUrl = url.trim();
+  if (!cleanUrl) {
+    throw new Error('กรุณาระบุลิงก์แชร์ Excel หรือ Google Sheets ที่ถูกต้อง');
+  }
+
+  // 1. Call server-side import endpoint (handles CORS, redirects, OneDrive, SharePoint, Google Drive, Dropbox)
+  try {
+    const res = await fetch('/api/import-excel-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: cleanUrl, sheetName }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
+        return {
+          fileName: data.fileName || 'ชุดข้อมูลจากลิงก์_Excel.xlsx',
+          records: data.records,
+          columns: data.columns || (data.records[0] ? Object.keys(data.records[0]) : []),
+          totalRows: data.records.length,
+          sheetNames: data.sheetNames || [],
+          sourceUrl: cleanUrl,
+        };
+      } else if (data && data.error) {
+        throw new Error(data.error);
+      }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      if (errData.error) throw new Error(errData.error);
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('fetch')) {
+      throw err;
+    }
+  }
+
+  // 2. Client-side fallback for Google Sheets published CSV / gviz
+  const gsheetsMatch = cleanUrl.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (gsheetsMatch) {
+    const spreadsheetId = gsheetsMatch[1];
+    const exportCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+    try {
+      const resp = await fetch(exportCsvUrl);
+      if (resp.ok) {
+        const text = await resp.text();
+        const parsed = parseCsvText(text, 'Google_Sheets_Import.csv');
+        return { ...parsed, sourceUrl: cleanUrl };
+      }
+    } catch {}
+  }
+
+  throw new Error('ไม่สามารถเข้าถึงข้อมูลจากลิงก์ได้ กรุณาตรวจสอบว่าเปิดสิทธิ์เข้าถึง "ทุกคนที่มีลิงก์" (Anyone with link) หรือลิงก์ถูกต้อง');
+}

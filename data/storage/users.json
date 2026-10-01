@@ -4,39 +4,90 @@
     "email": "aoneza1234@gmail.com",
     "password": "password123",
     "name": "Thirawat (เจ้าของระบบ)",
+    "displayName": "Thirawat (เจ้าของระบบ)",
     "role": "admin",
+    "status": "active",
     "department": "ผู้ดูแลระบบและวิเคราะห์ข้อมูล",
     "createdDate": "2026-01-01T00:00:00.000Z",
-    "lastLoginAt": "เพิ่งเข้าสู่ระบบ"
+    "lastLoginAt": "เพิ่งเข้าสู่ระบบ",
+    "assignedTemplateIds": ["tpl-1", "tpl-2", "tpl-3"]
   },
   {
     "userId": "usr-admin-1",
     "email": "aoneza953@gmail.com",
     "password": "password123",
     "name": "Thirawat (ผู้ดูแลระบบ)",
+    "displayName": "Thirawat (ผู้ดูแลระบบ)",
     "role": "admin",
-    "department": "Management & IT",
+    "status": "active",
+    "department": "ฝ่ายบริหาร & ไอที",
     "createdDate": "2026-01-15T00:00:00.000Z",
-    "lastLoginAt": "วันนี้ 15:30"
+    "lastLoginAt": "วันนี้ 15:30",
+    "assignedTemplateIds": ["tpl-1", "tpl-2", "tpl-3", "tpl-4"]
+  },
+  {
+    "userId": "usr-sales-1",
+    "email": "siriporn.j@company.co.th",
+    "password": "password123",
+    "name": "ศิริพร ใจมั่น",
+    "displayName": "ศิริพร ใจมั่น",
+    "role": "editor",
+    "status": "active",
+    "department": "ฝ่ายขายและการตลาด",
+    "createdDate": "2026-02-01T00:00:00.000Z",
+    "lastLoginAt": "เมื่อวานนี้",
+    "assignedTemplateIds": ["tpl-1", "tpl-2"]
+  },
+  {
+    "userId": "usr-sales-2",
+    "email": "kittisak.p@company.co.th",
+    "password": "password123",
+    "name": "กิตติศักดิ์ พัฒนา",
+    "displayName": "กิตติศักดิ์ พัฒนา",
+    "role": "viewer",
+    "status": "active",
+    "department": "ทีมปฏิบัติการสาขา",
+    "createdDate": "2026-02-10T00:00:00.000Z",
+    "lastLoginAt": "3 วันที่แล้ว",
+    "assignedTemplateIds": ["tpl-1"]
   },
   {
     "userId": "usr-editor-1",
     "email": "komsan.m@team.internal",
     "password": "password123",
     "name": "Komsan (ผู้ใช้งานทั่วไป)",
+    "displayName": "Komsan (ผู้ใช้งานทั่วไป)",
     "role": "editor",
-    "department": "Marketing Strategy",
+    "status": "active",
+    "department": "ฝ่ายกลยุทธ์การตลาด",
     "createdDate": "2026-02-10T00:00:00.000Z",
-    "lastLoginAt": "วันนี้ 10:15"
+    "lastLoginAt": "วันนี้ 10:15",
+    "assignedTemplateIds": ["tpl-1", "tpl-3"]
   },
   {
     "userId": "usr-editor-2",
     "email": "nattapong.s@team.internal",
     "password": "password123",
     "name": "Nattapong (ทีมงานขาย)",
+    "displayName": "Nattapong (ทีมงานขาย)",
     "role": "editor",
-    "department": "Regional Sales",
+    "status": "active",
+    "department": "ฝ่ายพัฒนาธุรกิจและงานขาย",
     "createdDate": "2026-02-20T00:00:00.000Z",
-    "lastLoginAt": "เมื่อวาน 16:45"
+    "lastLoginAt": "เมื่อวาน 16:45",
+    "assignedTemplateIds": ["tpl-1"]
+  },
+  {
+    "userId": "usr-editor-3",
+    "email": "waraporn.k@company.co.th",
+    "password": "password123",
+    "name": "วราภรณ์ ขจรศักดิ์",
+    "displayName": "วราภรณ์ ขจรศักดิ์",
+    "role": "editor",
+    "status": "active",
+    "department": "ฝ่ายบัญชีและการเงิน",
+    "createdDate": "2026-02-25T00:00:00.000Z",
+    "lastLoginAt": "4 วันที่แล้ว",
+    "assignedTemplateIds": ["tpl-2"]
   }
 ]

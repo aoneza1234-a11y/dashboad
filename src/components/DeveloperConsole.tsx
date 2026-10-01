@@ -64,6 +64,7 @@ import {
 } from '../types';
 import {
   getTeamUsers,
+  fetchAllTeamUsers,
   toggleUserBlockStatus,
   updateUserRole,
   deleteTeamUser,
@@ -238,8 +239,18 @@ export const DeveloperConsole: React.FC<DeveloperConsoleProps> = ({
 
   // Sync users & templates
   useEffect(() => {
-    setTeamUsers(getTeamUsers());
+    fetchAllTeamUsers().then(setTeamUsers).catch(() => setTeamUsers(getTeamUsers()));
     setTemplatesList(getDashboardTemplates());
+
+    const handleUsersUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setTeamUsers(e.detail);
+      } else {
+        fetchAllTeamUsers().then(setTeamUsers).catch(() => setTeamUsers(getTeamUsers()));
+      }
+    };
+    window.addEventListener('team_users_updated', handleUsersUpdate);
+    return () => window.removeEventListener('team_users_updated', handleUsersUpdate);
   }, [activeTab]);
 
 

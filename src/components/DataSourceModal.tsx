@@ -16,9 +16,11 @@ import {
   FileText,
   AlertCircle,
   RefreshCw,
+  Link2,
+  ExternalLink,
 } from 'lucide-react';
 import { SalesRecord, TeamUser } from '../types';
-import { parseExcelOrCsvFile } from '../utils/fileParser';
+import { parseExcelOrCsvFile, parseExcelFromSharedUrl } from '../utils/fileParser';
 import {
   dbGetDataSources,
   dbSaveDataSource,
@@ -47,7 +49,10 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'my_sources' | 'upload_new'>('my_sources');
+  const [activeTab, setActiveTab] = useState<'my_sources' | 'upload_new' | 'link_excel'>('my_sources');
+  const [excelUrl, setExcelUrl] = useState('');
+  const [sheetNameInput, setSheetNameInput] = useState('');
+  const [isFetchingUrl, setIsFetchingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchSources = async () => {
@@ -113,6 +118,42 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleImportFromUrl = async () => {
+    if (!excelUrl.trim()) {
+      setErrorMsg('กรุณาระบุลิงก์แชร์ Excel, OneDrive หรือ Google Sheets ที่ถูกต้อง');
+      return;
+    }
+    const effectiveUserId = currentUser?.id || 'usr-default-storage';
+    setIsFetchingUrl(true);
+    setErrorMsg(null);
+    setUploadSuccessMsg(null);
+
+    try {
+      const parsed = await parseExcelFromSharedUrl(excelUrl.trim(), sheetNameInput.trim() || undefined);
+      if (!parsed.records || parsed.records.length === 0) {
+        setErrorMsg('ไม่พบข้อมูลแถวในลิงก์ที่ระบุ กรุณาตรวจสอบว่าเปิดสิทธิ์สาธารณะหรือทุกคนที่มีลิงก์แล้วหรือไม่');
+        return;
+      }
+
+      // Save into Database Table DataSources
+      const saved = await dbSaveDataSource(effectiveUserId, parsed.fileName, parsed.records);
+      setDataSources((prev) => [saved, ...prev]);
+      setUploadSuccessMsg(`นำเข้าและจัดเก็บบนคลาวด์ "${parsed.fileName}" เรียบร้อยแล้ว (${parsed.totalRows} แถว)`);
+
+      // Automatically activate this dataset
+      onSelectDataSource(parsed.records, parsed.fileName);
+      setExcelUrl('');
+
+      setTimeout(() => {
+        setActiveTab('my_sources');
+      }, 1200);
+    } catch (err: any) {
+      setErrorMsg(`เกิดข้อผิดพลาดในการดึงข้อมูลจากลิงก์: ${err?.message || 'ไม่สามารถเข้าถึงไฟล์ได้'}`);
+    } finally {
+      setIsFetchingUrl(false);
     }
   };
 
@@ -208,6 +249,18 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
               <Upload className="w-3.5 h-3.5" />
               <span>อัปโหลด Excel / CSV ใหม่</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('link_excel')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'link_excel'
+                  ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm'
+                  : 'bg-[#1c1833] text-teal-400 hover:text-white'
+              }`}
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>🔗 วางลิงก์แชร์ Excel / OneDrive</span>
+            </button>
           </div>
 
           <button
@@ -284,6 +337,84 @@ export const DataSourceModal: React.FC<DataSourceModalProps> = ({
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   แยกข้อมูลเฉพาะบัญชีคุณ (Isolated)
                 </span>
+              </div>
+            </div>
+          ) : activeTab === 'link_excel' ? (
+            <div className="border border-[#342a5c] rounded-2xl p-6 bg-[#18142c] space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
+                  <Link2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    นำเข้าข้อมูลจากลิงก์แชร์ Excel / OneDrive / Google Drive
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    วางลิงก์ไฟล์ Excel ที่แชร์แบบสาธารณะ หรือแชร์ให้ทุกคนที่มีลิงก์ดูได้ ระบบจะดึงข้อมูลมาแปลงและบันทึกอัตโนมัติ
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>ลิงก์ไฟล์ Excel / OneDrive / SharePoint / Google Drive / URL</span>
+                    <span className="text-[11px] text-teal-400">รองรับ OneDrive, SharePoint, Google Sheets, Dropbox, Direct .xlsx</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={excelUrl}
+                    onChange={(e) => setExcelUrl(e.target.value)}
+                    placeholder="วางลิงก์ เช่น https://1drv.ms/x/... หรือ https://docs.google.com/spreadsheets/d/.../edit"
+                    className="w-full px-3.5 py-2.5 bg-[#201a3b] border border-[#342a5c] rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-teal-400"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleImportFromUrl();
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                      ชื่อแผ่นงาน (Sheet Name) - เว้นว่างได้เพื่อใช้ Sheet แรก
+                    </label>
+                    <input
+                      type="text"
+                      value={sheetNameInput}
+                      onChange={(e) => setSheetNameInput(e.target.value)}
+                      placeholder="เช่น Sheet1 หรือ ยอดขาย"
+                      className="w-full px-3 py-1.5 bg-[#201a3b] border border-[#342a5c] rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-teal-400"
+                    />
+                  </div>
+                  <div className="shrink-0 pt-4">
+                    <button
+                      onClick={handleImportFromUrl}
+                      disabled={isFetchingUrl || !excelUrl.trim()}
+                      className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50 transition"
+                    >
+                      {isFetchingUrl ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>กำลังดึงข้อมูลจากลิงก์...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                          <span>ดึงข้อมูลและบันทึกสู่คลาวด์</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#201a3b] border border-[#302657] text-[11px] text-slate-400 space-y-1">
+                  <div className="font-semibold text-slate-300">💡 เคล็ดลับการแชร์ลิงก์:</div>
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-400 pl-1">
+                    <li><strong>OneDrive / SharePoint:</strong> กดแชร์ (Share) แล้วเลือก "ทุกคนที่มีลิงก์สามารถดูได้ (Anyone with the link can view)"</li>
+                    <li><strong>Google Sheets:</strong> กดแชร์ (Share) เลือก "ทุกคนที่มีลิงก์ (Anyone with link)" เป็น Viewer</li>
+                    <li><strong>Dropbox:</strong> คัดลอกลิงก์แชร์ของไฟล์ .xlsx</li>
+                  </ul>
+                </div>
               </div>
             </div>
           ) : (

@@ -1,0 +1,43 @@
+[
+  {
+    "id": "tpl-1",
+    "title": "ภาพรวมยอดขาย & KPI ผู้บริหาร (Executive Sales)",
+    "description": "เทมเพลตมาตรฐานสำหรับผู้บริหาร สรุปยอดขายรวม กำไรขั้นต้น ออเดอร์ และกราฟจำแนกตามหมวดหมู่สินค้า",
+    "category": "Sales & Revenue",
+    "thumbnailIcon": "BarChart3",
+    "sampleDataCount": 100,
+    "createdBy": "Thirawat (เจ้าของระบบ)",
+    "createdAt": "2026-02-01",
+    "assignedToUserIds": [
+      "all"
+    ]
+  },
+  {
+    "id": "tpl-2",
+    "title": "รายงานการเงินและ P&L รายไตรมาส (Financial Overview)",
+    "description": "แดชบอร์ดโครงสร้างงบการเงิน อัตรากำไรขั้นต้น และการเปรียบเทียบต้นทุนสินค้าคงเหลือ",
+    "category": "Finance",
+    "thumbnailIcon": "TrendingUp",
+    "sampleDataCount": 85,
+    "createdBy": "Thirawat (ผู้ดูแลระบบ)",
+    "createdAt": "2026-02-15",
+    "assignedToUserIds": [
+      "usr-editor-1",
+      "usr-editor-3"
+    ]
+  },
+  {
+    "id": "tpl-3",
+    "title": "ผลการดำเนินงานทีมขายและแคมเปญ (Campaign Matrix)",
+    "description": "แดชบอร์ดติดตามเป้าหมายรายบุคคล ยอดขายตามช่องทาง และอัตราความสำเร็จของแคมเปญการตลาด",
+    "category": "Marketing & Sales",
+    "thumbnailIcon": "Users",
+    "sampleDataCount": 120,
+    "createdBy": "Thirawat (ผู้ดูแลระบบ)",
+    "createdAt": "2026-03-01",
+    "assignedToUserIds": [
+      "usr-editor-1",
+      "usr-editor-2"
+    ]
+  }
+]

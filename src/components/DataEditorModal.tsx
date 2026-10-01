@@ -16,10 +16,11 @@ import {
   Upload,
   Pencil,
   AlertTriangle,
+  Link2,
 } from 'lucide-react';
 import { SalesRecord, SheetConnectionConfig } from '../types';
 import { INITIAL_SALES_RECORDS } from '../data/sampleData';
-import { parseExcelOrCsvFile } from '../utils/fileParser';
+import { parseExcelOrCsvFile, parseExcelFromSharedUrl } from '../utils/fileParser';
 
 interface DataEditorModalProps {
   isOpen: boolean;
@@ -55,6 +56,9 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
   const [newColumnName, setNewColumnName] = useState('');
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [excelLinkInput, setExcelLinkInput] = useState('');
+  const [isImportingLink, setIsImportingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Column Renaming State
@@ -263,6 +267,25 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
     }
   };
 
+  const handleImportFromUrl = async () => {
+    if (!excelLinkInput.trim()) return;
+    setIsImportingLink(true);
+    try {
+      const parsed = await parseExcelFromSharedUrl(excelLinkInput.trim());
+      if (parsed.records && parsed.records.length > 0) {
+        setRecords(parsed.records);
+        setImportMessage(`นำเข้าข้อมูลจากลิงก์ "${parsed.fileName}" เรียบร้อยแล้ว (${parsed.totalRows} แถว)`);
+        setShowLinkModal(false);
+        setExcelLinkInput('');
+        setTimeout(() => setImportMessage(null), 3500);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'ไม่สามารถนำเข้าข้อมูลจากลิงก์ได้ กรุณาตรวจสอบลิงก์');
+    } finally {
+      setIsImportingLink(false);
+    }
+  };
+
   const handleSave = () => {
     onSaveData(safeRecords);
     setSavedSuccess(true);
@@ -458,6 +481,15 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
               <Upload className="w-3.5 h-3.5" />
               <span>นำเข้า Excel / CSV</span>
             </label>
+
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-300 font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="นำเข้าข้อมูลโดยตรงจากลิงก์แชร์ Excel / OneDrive / SharePoint / Google Drive"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>วางลิงก์ Excel</span>
+            </button>
 
             {onOpenDataSourceStorage && (
               <button
@@ -675,6 +707,63 @@ export const DataEditorModal: React.FC<DataEditorModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Link Import Dialog */}
+        {showLinkModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+            <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 border border-teal-200 flex items-center justify-center">
+                    <Link2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">นำเข้าจากลิงก์แชร์ Excel / OneDrive</h3>
+                    <p className="text-xs text-slate-500">รองรับ OneDrive, SharePoint, Google Sheets, Dropbox และ Direct URL</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLinkModal(false)}
+                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  วางลิงก์ไฟล์ Excel ที่แชร์ (Anyone with link)
+                </label>
+                <input
+                  type="url"
+                  value={excelLinkInput}
+                  onChange={(e) => setExcelLinkInput(e.target.value)}
+                  placeholder="เช่น https://1drv.ms/x/... หรือ https://docs.google.com/spreadsheets/d/..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-teal-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleImportFromUrl();
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowLinkModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleImportFromUrl}
+                  disabled={isImportingLink || !excelLinkInput.trim()}
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {isImportingLink ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลเข้าสู่ตาราง'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -178,6 +178,23 @@ function dashboardFileStoragePlugin(): Plugin {
             return;
           }
 
+          // DELETE /api/users?userId=... or by body
+          if (req.method === 'DELETE') {
+            const userId = url.searchParams.get('userId') || url.searchParams.get('id') || '';
+            const email = (url.searchParams.get('email') || '').trim().toLowerCase();
+            const initialCount = users.length;
+            users = users.filter((u: any) => {
+              if (userId && (u.userId === userId || u.id === userId)) return false;
+              if (email && (u.email || '').toLowerCase() === email) return false;
+              return true;
+            });
+            fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: true, deleted: initialCount - users.length, remaining: users.length }));
+            return;
+          }
+
           // POST /api/users (register, login, or update)
           if (req.method === 'POST') {
             let body = '';
@@ -186,7 +203,7 @@ function dashboardFileStoragePlugin(): Plugin {
             });
             req.on('end', () => {
               try {
-                const parsed = JSON.parse(body);
+                const parsed = JSON.parse(body || '{}');
                 const action = url.searchParams.get('action') || parsed.action || 'register';
 
                 // Login
@@ -241,11 +258,24 @@ function dashboardFileStoragePlugin(): Plugin {
 
                 // Register or Update User
                 const email = (parsed.email || '').trim().toLowerCase();
-                const existingIdx = users.findIndex((u: any) => (u.email || '').toLowerCase() === email);
+                const targetUserId = parsed.userId || parsed.id;
+                const existingIdx = users.findIndex(
+                  (u: any) =>
+                    (targetUserId && (u.userId === targetUserId || u.id === targetUserId)) ||
+                    (email && (u.email || '').toLowerCase() === email)
+                );
 
                 if (existingIdx >= 0) {
                   // Update existing
-                  users[existingIdx] = { ...users[existingIdx], ...parsed, email };
+                  users[existingIdx] = {
+                    ...users[existingIdx],
+                    ...parsed,
+                    userId: users[existingIdx].userId || targetUserId,
+                    email: email || users[existingIdx].email,
+                    displayName: parsed.displayName || parsed.name || users[existingIdx].displayName || users[existingIdx].name,
+                    status: parsed.status || users[existingIdx].status || 'active',
+                    updatedAt: new Date().toISOString(),
+                  };
                   fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
                   res.statusCode = 200;
                   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -253,16 +283,19 @@ function dashboardFileStoragePlugin(): Plugin {
                   return;
                 }
 
-                // Add new
+                // Add new user
                 const newUser = {
-                  userId: parsed.userId || `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  userId: parsed.userId || parsed.id || `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                   email,
                   password: parsed.password || 'password123',
                   name: (parsed.name || parsed.displayName || 'สมาชิกใหม่').trim(),
+                  displayName: (parsed.displayName || parsed.name || 'สมาชิกใหม่').trim(),
                   role: parsed.role || 'editor',
+                  status: parsed.status || 'active',
                   department: (parsed.department || 'ทั่วไป').trim(),
                   createdDate: parsed.createdDate || new Date().toISOString(),
                   lastLoginAt: 'เพิ่งสมัคร',
+                  assignedTemplateIds: parsed.assignedTemplateIds || ['tpl-1'],
                 };
                 users.unshift(newUser);
                 fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');

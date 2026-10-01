@@ -491,29 +491,38 @@ export default function App() {
         return;
       }
 
-      // 1. Fast read user's saved template from localStorage (<1ms)
-      const saved = loadUserDashboard(user.id);
-      if (saved && saved.widgets && saved.widgets.length > 0) {
-        applyDashboardData(saved);
-      } else {
-        // 2. If not found in localStorage, fetch from IndexedDB & Cloud Database before falling back to starter
-        loadUserDashboardFromCloud(user.id).then((cloudData) => {
+      // 1. Fast initial bootstrap from local cache (<1ms) so screen renders without blinking
+      const cached = loadUserDashboard(user.id);
+      if (cached && cached.widgets && cached.widgets.length > 0) {
+        applyDashboardData(cached);
+      }
+
+      // 2. Database-First Single Source of Truth: ALWAYS fetch authoritative dashboard from Server & Cloud
+      loadUserDashboardFromCloud(user.id)
+        .then((cloudData) => {
           if (cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
             applyDashboardData(cloudData);
-          } else {
+          } else if (!cached || !cached.widgets || cached.widgets.length === 0) {
             const starter = getStarterUserDashboard(user);
             applyDashboardData(starter);
             saveUserDashboard(user.id, starter);
           }
-        }).catch(() => {
-          const starter = getStarterUserDashboard(user);
-          applyDashboardData(starter);
-          saveUserDashboard(user.id, starter);
+        })
+        .catch(() => {
+          if (!cached || !cached.widgets || cached.widgets.length === 0) {
+            const starter = getStarterUserDashboard(user);
+            applyDashboardData(starter);
+            saveUserDashboard(user.id, starter);
+          }
+        })
+        .finally(() => {
+          setTimeout(() => {
+            isPopulatingUserDataRef.current = false;
+          }, 300);
         });
-      }
 
       // 3. Live Real-Time Google Sheets refresh (ดึงข้อมูลแบบเรียลไทม์เมื่อเปิดหรือเมื่อชีทอัปเดต)
-      const targetConfig = saved?.connectionConfig;
+      const targetConfig = cached?.connectionConfig;
       if (targetConfig && targetConfig.spreadsheetId) {
         setIsSyncing(true);
         refreshUserLiveData(user.id, targetConfig, accessToken).then((res) => {

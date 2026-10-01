@@ -24,6 +24,7 @@ import {
   extractSpreadsheetId,
 } from '../services/googleSheets';
 import { INITIAL_SALES_RECORDS } from '../data/sampleData';
+import { parseExcelFromSharedUrl } from '../utils/fileParser';
 
 interface ConnectSheetModalProps {
   isOpen: boolean;
@@ -125,14 +126,65 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
 
   const handleDiscoverAndFetch = async (targetSheetTab?: string, knownSheets?: string[]) => {
     if (!sheetInput.trim()) {
-      setStatusMsg({ type: 'error', text: 'กรุณาใส่ลิงก์หรือ Spreadsheet ID ของ Google Sheets' });
+      setStatusMsg({ type: 'error', text: 'กรุณาใส่ลิงก์ Google Sheets หรือ ลิงก์แชร์ Excel / OneDrive' });
       return;
     }
 
     setIsLoading(true);
-    setStatusMsg({ type: 'info', text: 'กำลังเชื่อมต่อและดึงข้อมูลจาก Google Sheets...' });
+    setStatusMsg({ type: 'info', text: 'กำลังเชื่อมต่อและดึงข้อมูลจากลิงก์...' });
 
     try {
+      const trimmed = sheetInput.trim();
+      const isExcelLink =
+        trimmed.includes('1drv.ms') ||
+        trimmed.includes('onedrive') ||
+        trimmed.includes('sharepoint.com') ||
+        trimmed.includes('dropbox.com') ||
+        trimmed.toLowerCase().includes('.xlsx') ||
+        trimmed.toLowerCase().includes('.xls') ||
+        trimmed.toLowerCase().includes('.csv');
+
+      if (isExcelLink) {
+        // Use universal Excel / OneDrive / Cloud link parser
+        const excelRes = await parseExcelFromSharedUrl(trimmed, targetSheetTab || selectedSheetTab);
+        if (!excelRes.records || excelRes.records.length === 0) {
+          throw new Error('ไม่พบข้อมูลในไฟล์ Excel ตามลิงก์ที่ระบุ');
+        }
+
+        const tabs = excelRes.sheetNames && excelRes.sheetNames.length > 0 ? excelRes.sheetNames : ['Sheet1'];
+        setAvailableSheets(tabs);
+        if (tabs[0] && !tabs.includes(selectedSheetTab)) {
+          setSelectedSheetTab(tabs[0]);
+        }
+
+        setAllFetchedRecords(excelRes.records);
+        setPreviewRecords(excelRes.records.slice(0, 5));
+        setPreviewHeaders(excelRes.columns);
+
+        const updatedConfig: SheetConnectionConfig = {
+          ...config,
+          spreadsheetId: trimmed,
+          spreadsheetTitle: excelRes.fileName,
+          sheetName: targetSheetTab || tabs[0] || 'Sheet1',
+          availableSheets: tabs,
+          headerRow,
+          dataStartRow,
+          status: 'connected',
+          lastSyncedAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+          mode: 'sample',
+          detectedHeaders: excelRes.columns,
+        };
+
+        onUpdateConfig(updatedConfig);
+        onImportData(excelRes.records, excelRes.fileName, excelRes.columns);
+
+        setStatusMsg({
+          type: 'success',
+          text: `ดึงข้อมูลจากไฟล์ Excel สำเร็จ! พบ ${excelRes.records.length} แถว และ ${excelRes.columns.length} คอลัมน์ (บันทึกและซิงค์สู่ออนเซิร์ฟเวอร์แล้ว)`,
+        });
+        return;
+      }
+
       const cleanId = extractSpreadsheetId(sheetInput);
       
       // Step 1: Discover Sheets / Tabs if not already provided
@@ -333,10 +385,10 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight">
-                เชื่อมต่อข้อมูล Google Sheets
+                เชื่อมต่อข้อมูล Google Sheets & ลิงก์แชร์ Excel / OneDrive
               </h2>
               <p className="text-xs text-slate-400">
-                ดึงข้อมูล เลือกแผ่นงาน (Sheet) และกำหนดแถวหัวตาราง / แถวเริ่มต้นข้อมูลได้อิสระ
+                ดึงข้อมูลจากชีตหรือไฟล์ Excel ออนไลน์ เลือกแผ่นงาน (Sheet) และกำหนดแถวหัวตารางได้อิสระ
               </p>
             </div>
           </div>
@@ -373,15 +425,15 @@ export const ConnectSheetModal: React.FC<ConnectSheetModalProps> = ({
           {/* Section 1: Spreadsheet URL or ID */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-              <span>ลิงก์ Google Sheets หรือ Spreadsheet ID</span>
+              <span>ลิงก์ Google Sheets หรือ ลิงก์แชร์ Excel (OneDrive / SharePoint / Dropbox / Direct URL)</span>
               <span className="text-[11px] text-teal-400 font-normal">
-                (ชีตแชร์สาธารณะ หรือชีตใน Google Drive)
+                (ชีตแชร์สาธารณะ หรือไฟล์แชร์แบบ Anyone with link)
               </span>
             </label>
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="วางลิงก์ชีต เช่น https://docs.google.com/spreadsheets/d/.../edit"
+                placeholder="วางลิงก์ เช่น https://docs.google.com/spreadsheets/d/... หรือ https://1drv.ms/x/..."
                 value={sheetInput}
                 onChange={(e) => setSheetInput(e.target.value)}
                 onKeyDown={(e) => {
