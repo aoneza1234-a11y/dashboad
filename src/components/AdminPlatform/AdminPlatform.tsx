@@ -106,6 +106,7 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
   const [activeSection, setActiveSection] = useState<AdminSection>('overview');
   const [siteStatus, setSiteStatus] = useState<SiteStatus>(getSiteStatus());
   const [users, setUsers] = useState<TeamUser[]>(getTeamUsers());
+  const [userFilterCategory, setUserFilterCategory] = useState<'all' | 'logged_in' | 'never_logged_in' | 'customers' | 'team' | 'admin' | 'blocked'>('all');
   const [searchUser, setSearchUser] = useState('');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
@@ -1539,121 +1540,290 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="ค้นหาผู้ใช้จากชื่อหรืออีเมล..."
-                      value={searchUser}
-                      onChange={(e) => setSearchUser(e.target.value)}
-                      className="bg-[#1c163b] border border-violet-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none w-64"
-                    />
+              {/* Search, Filter Pills & Add User Button */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="ค้นหาชื่อ, อีเมล, บริษัท หรือแผนก..."
+                        value={searchUser}
+                        onChange={(e) => setSearchUser(e.target.value)}
+                        className="bg-[#1c163b] border border-violet-500/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 focus:outline-none w-72"
+                      />
+                    </div>
+                    <span className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ฐานข้อมูลผู้ใช้และลูกค้าแบบเรียลไทม์ ({users.length} บัญชี)
+                    </span>
                   </div>
-                  <span className="text-[11px] text-emerald-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    ซิงค์ข้อมูลผู้ใช้จาก Cloud Database แบบเรียลไทม์
-                  </span>
+
+                  <button
+                    onClick={() => setShowAddUserModal(true)}
+                    className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-violet-900/40 self-start sm:self-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ เพิ่มบัญชีผู้ใช้ / ลูกค้าใหม่</span>
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => setShowAddUserModal(true)}
-                  className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-violet-900/40"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>สร้างผู้ใช้ใหม่</span>
-                </button>
+                {/* Filter Category Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-[#141029] border border-violet-500/20 text-xs">
+                  <button
+                    onClick={() => setUserFilterCategory('all')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${
+                      userFilterCategory === 'all'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    ทั้งหมด ({users.length})
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('logged_in')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'logged_in'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-950/30'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>เข้าใช้งานแล้ว ({users.filter((u) => u.lastLoginAt && !u.lastLoginAt.includes('ยังไม่เคย')).length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('never_logged_in')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'never_logged_in'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                    <span>ยังไม่เคยเข้าสู่ระบบ ({users.filter((u) => !u.lastLoginAt || u.lastLoginAt.includes('ยังไม่เคย') || u.lastLoginAt.includes('เพิ่งสมัคร')).length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('customers')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'customers'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-blue-400/80 hover:text-blue-300 hover:bg-blue-950/30'
+                    }`}
+                  >
+                    <span>💼 บัญชีลูกค้า ({users.filter((u) => u.accountType === 'customer' || (u.email && !u.email.includes('@company') && !u.email.includes('@team'))).length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('team')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'team'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-purple-400/80 hover:text-purple-300 hover:bg-purple-950/30'
+                    }`}
+                  >
+                    <span>👥 ทีมงาน ({users.filter((u) => u.role === 'editor' && u.accountType !== 'customer').length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('admin')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'admin'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-amber-400/80 hover:text-amber-300 hover:bg-amber-950/30'
+                    }`}
+                  >
+                    <span>👑 แอดมิน ({users.filter((u) => u.role === 'admin').length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterCategory('blocked')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      userFilterCategory === 'blocked'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'text-rose-400/80 hover:text-rose-300 hover:bg-rose-950/30'
+                    }`}
+                  >
+                    <span>🚫 ถูกระงับ ({users.filter((u) => u.status === 'blocked').length})</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Users Table */}
-              <div className="rounded-2xl border border-violet-500/20 bg-[#15112d] overflow-hidden">
+              {/* Users & Customers Table */}
+              <div className="rounded-2xl border border-violet-500/20 bg-[#15112d] overflow-hidden shadow-xl">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-white/10 bg-[#1b1538] text-slate-400 font-semibold">
-                      <th className="py-3 px-4">ชื่อสมาชิก</th>
-                      <th className="py-3 px-4">อีเมล</th>
-                      <th className="py-3 px-4">แผนก</th>
+                      <th className="py-3 px-4">ชื่อสมาชิก / บัญชีลูกค้า</th>
+                      <th className="py-3 px-4">อีเมล / บริษัท</th>
+                      <th className="py-3 px-4">ประเภทบัญชี & แพ็กเกจ</th>
                       <th className="py-3 px-4">สิทธิ์ในระบบ</th>
+                      <th className="py-3 px-4">สถานะการเข้าใช้งาน</th>
                       <th className="py-3 px-4">สถานะบัญชี</th>
-                      <th className="py-3 px-4">เข้าสู่ระบบล่าสุด</th>
                       <th className="py-3 px-4 text-right">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {users
-                      .filter(
-                        (u) =>
-                          u.displayName.toLowerCase().includes(searchUser.toLowerCase()) ||
-                          u.email.toLowerCase().includes(searchUser.toLowerCase())
-                      )
-                      .map((user) => (
-                        <tr key={user.id} className="hover:bg-white/5 transition">
-                          <td className="py-3 px-4 font-semibold text-white flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-violet-600/30 flex items-center justify-center text-xs font-bold text-violet-300">
-                              {user.displayName.charAt(0)}
-                            </div>
-                            <div>
-                              <span>{user.displayName}</span>
-                              <div className="text-[10px] text-slate-500 font-mono">ID: {user.id}</div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 font-mono text-slate-300">{user.email}</td>
-                          <td className="py-3 px-4 text-slate-300">{user.department || '-'}</td>
-                          <td className="py-3 px-4">
-                            <select
-                              value={user.role}
-                              onChange={(e) => {
-                                const newRole = e.target.value as 'admin' | 'editor' | 'viewer';
-                                updateUserRole(user.id, newRole);
-                                setTimeout(() => fetchAllTeamUsers().then(setUsers), 100);
-                              }}
-                              className={`px-2 py-1 rounded-lg text-xs font-bold border cursor-pointer outline-none transition ${
-                                user.role === 'admin'
-                                  ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 hover:bg-amber-900'
-                                  : 'bg-violet-950/80 text-violet-300 border-violet-500/50 hover:bg-violet-900'
-                              }`}
-                              title="เปลี่ยนสิทธิ์การเข้าถึงของผู้ใช้ (หากเป็น Admin จะเห็นปุ่มเข้าระบบหลังบ้านได้ทันที)"
-                            >
-                              <option value="editor" className="bg-[#1b1538] text-violet-200">👥 ผู้ใช้ทั่วไป (Editor - เว็บหน้าบ้าน)</option>
-                              <option value="admin" className="bg-[#1b1538] text-amber-200">👑 ผู้ดูแลระบบ (Admin - เข้าหลังบ้านได้)</option>
-                              <option value="viewer" className="bg-[#1b1538] text-cyan-200">👁️ ผู้ชม (Viewer - ดูอย่างเดียว)</option>
-                            </select>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              user.status === 'active'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                            }`}>
-                              {user.status === 'active' ? 'ปกติ (Active)' : 'ระงับการใช้งาน (Blocked)'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-slate-300 text-[11px]">
-                            <div>{user.lastLoginAt || 'เพิ่งเข้าสู่ระบบ'}</div>
-                            <div className="text-[10px] text-slate-500">สร้าง: {user.createdAt || '2026-01-01'}</div>
-                          </td>
-                          <td className="py-3 px-4 text-right space-x-2">
-                            <button
-                              onClick={() => handleToggleBlock(user.id)}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                      .filter((u) => {
+                        // Category filter
+                        if (userFilterCategory === 'logged_in') {
+                          if (!u.lastLoginAt || u.lastLoginAt.includes('ยังไม่เคย')) return false;
+                        }
+                        if (userFilterCategory === 'never_logged_in') {
+                          if (u.lastLoginAt && !u.lastLoginAt.includes('ยังไม่เคย') && !u.lastLoginAt.includes('เพิ่งสมัคร')) return false;
+                        }
+                        if (userFilterCategory === 'customers') {
+                          const isCust = u.accountType === 'customer' || (u.email && !u.email.includes('@company') && !u.email.includes('@team'));
+                          if (!isCust) return false;
+                        }
+                        if (userFilterCategory === 'team') {
+                          if (u.role !== 'editor' || u.accountType === 'customer') return false;
+                        }
+                        if (userFilterCategory === 'admin') {
+                          if (u.role !== 'admin') return false;
+                        }
+                        if (userFilterCategory === 'blocked') {
+                          if (u.status !== 'blocked') return false;
+                        }
+
+                        // Search query
+                        if (searchUser.trim()) {
+                          const q = searchUser.toLowerCase();
+                          return (
+                            u.displayName.toLowerCase().includes(q) ||
+                            u.email.toLowerCase().includes(q) ||
+                            (u.department && u.department.toLowerCase().includes(q)) ||
+                            (u.company && u.company.toLowerCase().includes(q))
+                          );
+                        }
+                        return true;
+                      })
+                      .map((user) => {
+                        const isNeverLoggedIn = !user.lastLoginAt || user.lastLoginAt.includes('ยังไม่เคย') || user.lastLoginAt.includes('เพิ่งสมัคร');
+                        const isCustomer = user.accountType === 'customer' || (user.email && !user.email.includes('@company') && !user.email.includes('@team'));
+                        const planName = user.plan || (user.role === 'admin' ? 'Enterprise' : isCustomer ? 'Pro' : 'Basic');
+
+                        return (
+                          <tr key={user.id} className="hover:bg-white/5 transition">
+                            <td className="py-3 px-4 font-semibold text-white">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold ${
+                                  user.role === 'admin'
+                                    ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40'
+                                    : isCustomer
+                                    ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                                    : 'bg-violet-600/30 text-violet-300 border border-violet-500/40'
+                                }`}>
+                                  {user.displayName.charAt(0)}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold">{user.displayName}</span>
+                                    {isCustomer && (
+                                      <span className="text-[9px] px-1 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-medium">ลูกค้า</span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono">ID: {user.id}</div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="font-mono text-slate-200">{user.email}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">{user.company || user.department || '-'}</div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                  planName === 'Enterprise'
+                                    ? 'bg-amber-950/70 border-amber-500/50 text-amber-300'
+                                    : planName === 'Pro'
+                                    ? 'bg-violet-950/70 border-violet-500/50 text-violet-300'
+                                    : planName === 'Basic'
+                                    ? 'bg-blue-950/70 border-blue-500/50 text-blue-300'
+                                    : 'bg-slate-800 border-slate-600 text-slate-300'
+                                }`}>
+                                  ⭐ {planName}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  {isCustomer ? 'บัญชีลูกค้า' : user.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ทีมงาน'}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <select
+                                value={user.role}
+                                onChange={(e) => {
+                                  const newRole = e.target.value as 'admin' | 'editor' | 'viewer';
+                                  updateUserRole(user.id, newRole);
+                                  setTimeout(() => fetchAllTeamUsers().then(setUsers), 100);
+                                }}
+                                className={`px-2 py-1 rounded-lg text-xs font-bold border cursor-pointer outline-none transition ${
+                                  user.role === 'admin'
+                                    ? 'bg-amber-950/80 text-amber-300 border-amber-500/50 hover:bg-amber-900'
+                                    : 'bg-violet-950/80 text-violet-300 border-violet-500/50 hover:bg-violet-900'
+                                }`}
+                                title="เปลี่ยนสิทธิ์การเข้าถึงของผู้ใช้"
+                              >
+                                <option value="editor" className="bg-[#1b1538] text-violet-200">👥 ผู้ใช้ทั่วไป (Editor)</option>
+                                <option value="admin" className="bg-[#1b1538] text-amber-200">👑 ผู้ดูแลระบบ (Admin)</option>
+                                <option value="viewer" className="bg-[#1b1538] text-cyan-200">👁️ ผู้ชม (Viewer)</option>
+                              </select>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              {isNeverLoggedIn ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-600/50">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                  <span>ยังไม่เคยเข้าสู่ระบบ</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  <span>{user.lastLoginAt || 'เข้าใช้งานแล้ว'}</span>
+                                </span>
+                              )}
+                              <div className="text-[10px] text-slate-500 mt-0.5">สมัครเมื่อ {user.createdAt || '2026-01-01'}</div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 user.status === 'active'
-                                  ? 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30'
-                                  : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
-                              }`}
-                            >
-                              {user.status === 'active' ? 'ระงับบัญชี' : 'ปลดบล็อก'}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/10 transition cursor-pointer"
-                              title="ลบผู้ใช้"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                              }`}>
+                                {user.status === 'active' ? 'ปกติ (Active)' : 'ระงับการใช้งาน (Blocked)'}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 text-right space-x-2">
+                              <button
+                                onClick={() => handleToggleBlock(user.id)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                                  user.status === 'active'
+                                    ? 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30'
+                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                                }`}
+                              >
+                                {user.status === 'active' ? 'ระงับบัญชี' : 'ปลดบล็อก'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/10 transition cursor-pointer"
+                                title="ลบผู้ใช้"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -2090,6 +2260,77 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                       <div className="text-[11px] text-slate-400">{pkg.limit}</div>
                     </div>
                   ))}
+                </div>
+
+                {/* Customer Accounts & Subscription Table */}
+                <div className="pt-4 border-t border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-pink-400" />
+                        <span>ฐานข้อมูลบัญชีลูกค้าและสถานะสมาชิก ({users.filter(u => u.accountType === 'customer' || (u.email && !u.email.includes('@company') && !u.email.includes('@team'))).length} ราย)</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        รายชื่อลูกค้าผู้ใช้บริการ ทั้งที่เข้าใช้งานแล้วและที่ยังไม่เคยเข้าสู่ระบบ
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-[#120d26] overflow-hidden">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-[#1a1435] text-slate-400 border-b border-white/10">
+                          <th className="py-2.5 px-3">ชื่อลูกค้า / องค์กร</th>
+                          <th className="py-2.5 px-3">อีเมล</th>
+                          <th className="py-2.5 px-3">แพ็กเกจปัจจุบัน</th>
+                          <th className="py-2.5 px-3">สถานะการเข้าใช้งาน</th>
+                          <th className="py-2.5 px-3">สถานะบัญชี</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-slate-300">
+                        {users
+                          .filter(u => u.accountType === 'customer' || (u.email && !u.email.includes('@company') && !u.email.includes('@team')))
+                          .map(cust => (
+                            <tr key={cust.id} className="hover:bg-white/5 transition">
+                              <td className="py-2.5 px-3 font-semibold text-white">
+                                <div>{cust.displayName}</div>
+                                <div className="text-[10px] text-slate-400">{cust.company || cust.department || 'ลูกค้าทั่วไป'}</div>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-300">{cust.email}</td>
+                              <td className="py-2.5 px-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  cust.plan === 'Enterprise'
+                                    ? 'bg-amber-950/80 border-amber-500/60 text-amber-300'
+                                    : cust.plan === 'Pro'
+                                    ? 'bg-violet-950/80 border-violet-500/60 text-violet-300'
+                                    : 'bg-blue-950/80 border-blue-500/60 text-blue-300'
+                                }`}>
+                                  ⭐ {cust.plan || 'Pro'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {(!cust.lastLoginAt || cust.lastLoginAt.includes('ยังไม่เคย') || cust.lastLoginAt.includes('เพิ่งสมัคร')) ? (
+                                  <span className="text-[10px] text-slate-400 flex items-center gap-1 font-semibold">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                                    <span>ยังไม่เคยเข้าสู่ระบบ</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-semibold">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    <span>{cust.lastLoginAt}</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                  ใช้งานปกติ
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>

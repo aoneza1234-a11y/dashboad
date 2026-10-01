@@ -321,11 +321,13 @@ export async function loadDashboardByShareParams(userId?: string | null, dashId?
 }
 
 // Save Project: Layout, Charts, Filters, Widgets, Theme, Data Mapping (Per-User Isolation)
-export function saveUserDashboard(
+// Saves this active dashboard as user's latest work ("ผลงานล่าสุด"), overwriting latest active draft when saved again.
+// Saved templates and presets remain untouched and safe!
+export async function saveUserDashboardAsync(
   userId: string,
   data: Omit<UserDashboardData, 'lastSavedAt'>,
   dashboardId?: string
-): string {
+): Promise<{ success: boolean; lastSavedAt: string; fileName?: string; error?: string }> {
   const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dId = dashboardId || data.dashboardId || `dash-${userId}-${data.dashboardTitle.replace(/\s+/g, '_')}`;
 
@@ -353,12 +355,16 @@ export function saveUserDashboard(
     }
   }
 
-  // 2. Persist to Server File System API (available across all machines and browsers)
-  saveDashboardToServerFile(userId, payload).catch((err) => {
-    console.warn('Server file save notice:', err);
-  });
+  let serverRes: { success: boolean; fileName?: string; error?: string } = { success: false };
 
-  // Sync to shared dashboard hub so viewers on any machine can load this exact customized dashboard
+  // 2. Persist to Server File System API (Authoritative source across all machines and browsers)
+  try {
+    serverRes = await saveDashboardToServerFile(userId, payload);
+  } catch (err: any) {
+    console.warn('Server file save notice:', err);
+  }
+
+  // 3. Sync to shared dashboard hub so viewers on any machine can load this exact customized dashboard
   try {
     fetch('/api/shared-dashboards', {
       method: 'POST',
@@ -372,14 +378,14 @@ export function saveUserDashboard(
     }).catch(() => {});
   } catch (e) {}
 
-  // 3. Persist to Cloud Database (Lean template & graph settings with non-blocking sync)
+  // 4. Persist to Cloud Database (Lean template & graph settings with non-blocking sync)
   const dbPayload: DBDashboard = {
     dashboardId: dId,
     userId,
     dashboardName: data.dashboardTitle,
     dashboardConfig: {
       widgets: data.widgets,
-      salesData: (data.salesData || []).slice(0, 500), // Store complete records in cloud document for full fidelity charts
+      salesData: (data.salesData || []).slice(0, 500),
       themeConfig: data.themeConfig,
       filterState: data.filterState || null,
       connectionConfig: data.connectionConfig || null,
@@ -390,11 +396,13 @@ export function saveUserDashboard(
     updatedDate: new Date().toISOString(),
   };
 
-  dbSaveDashboard(dbPayload).catch((err) => {
+  try {
+    await dbSaveDashboard(dbPayload);
+  } catch (err) {
     console.warn('Save to cloud database warning:', err);
-  });
+  }
 
-  // 4. Dispatch global save event
+  // 5. Dispatch global save event
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('user_dashboard_saved', {
@@ -403,6 +411,22 @@ export function saveUserDashboard(
     );
   }
 
+  return {
+    success: true,
+    lastSavedAt: timeStr,
+    fileName: serverRes.fileName,
+  };
+}
+
+export function saveUserDashboard(
+  userId: string,
+  data: Omit<UserDashboardData, 'lastSavedAt'>,
+  dashboardId?: string
+): string {
+  const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  saveUserDashboardAsync(userId, data, dashboardId).catch((err) => {
+    console.warn('Background save error:', err);
+  });
   return timeStr;
 }
 

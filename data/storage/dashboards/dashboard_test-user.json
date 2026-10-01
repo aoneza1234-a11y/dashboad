@@ -1,0 +1,10 @@
+{
+  "userId": "test-user",
+  "widgets": [
+    {
+      "id": "1",
+      "title": "Test"
+    }
+  ],
+  "dashboardTitle": "Test"
+}

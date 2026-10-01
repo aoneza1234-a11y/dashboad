@@ -43,6 +43,7 @@ import {
   UserCircle2,
   Bot,
   Bell,
+  Loader2,
 } from 'lucide-react';
 import { FilterState, ThemePreset, VisualType, TeamUser } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
@@ -53,6 +54,7 @@ interface TopBarProps {
   dashboardTitle: string;
   onUpdateTitle: (title: string) => void;
   isSaved: boolean;
+  isSaving?: boolean;
   isSyncing: boolean;
   onSync: () => void;
   onSaveDashboard?: () => void;
@@ -102,6 +104,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   dashboardTitle,
   onUpdateTitle,
   isSaved,
+  isSaving = false,
   isSyncing,
   onSync,
   onSaveDashboard,
@@ -253,18 +256,28 @@ export const TopBar: React.FC<TopBarProps> = ({
               {/* Saved Status Badge & Auto-Save indicator */}
               <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] border font-medium ${
                 isLight
-                  ? isSaved
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                    : 'bg-amber-50 border-amber-300 text-amber-800'
-                  : isSaved
-                    ? 'bg-[#183127] border-emerald-500/40 text-emerald-300'
-                    : 'bg-[#241e42] border-[#342b5c] text-violet-300'
+                  ? isSaving
+                    ? 'bg-blue-50 border-blue-300 text-blue-800'
+                    : isSaved
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-amber-50 border-amber-300 text-amber-800'
+                  : isSaving
+                    ? 'bg-[#142338] border-blue-500/40 text-blue-300'
+                    : isSaved
+                      ? 'bg-[#183127] border-emerald-500/40 text-emerald-300'
+                      : 'bg-[#241e42] border-[#342b5c] text-violet-300'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isSaved ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                {isSaving ? (
+                  <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSaved ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                )}
                 <span>
-                  {isSaved
-                    ? `บันทึกเทมเพลตกราฟแล้ว${lastSavedAt ? ` (${lastSavedAt})` : ''}`
-                    : 'กำลังบันทึกอัตโนมัติ...'}
+                  {isSaving
+                    ? 'กำลังบันทึกลงเซิร์ฟเวอร์...'
+                    : isSaved
+                      ? `บันทึกผลงานล่าสุดแล้ว${lastSavedAt ? ` (${lastSavedAt})` : ''}`
+                      : 'มีการแก้ไข (ยังไม่บันทึก)'}
                 </span>
               </div>
             </div>
@@ -273,20 +286,39 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Right: History, Theme, Sync, Save, Preview Controls */}
         <div className="flex items-center gap-2 text-xs">
-          {/* Manual Save Button - Instant per-user save */}
+          {/* Manual Save Button - Instant per-user save (Overwrites latest active dashboard without touching saved templates) */}
           {onSaveDashboard && (
             <button
               id="btn-manual-save-dashboard"
               onClick={onSaveDashboard}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs transition cursor-pointer ${
-                isLight
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/40'
+              disabled={isSaving}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold text-xs shadow-xs transition cursor-pointer ${
+                isSaving
+                  ? 'bg-emerald-700/80 text-white cursor-wait opacity-90'
+                  : isSaved
+                    ? isLight
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-700/20'
+                      : 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/40'
+                    : 'bg-amber-600 hover:bg-amber-500 text-white ring-2 ring-amber-400/40'
               }`}
-              title="กดบันทึกแดชบอร์ดลงในบัญชีผู้ใช้ของคุณและเซิร์ฟเวอร์ทันที"
+              title="บันทึกแดชบอร์ดลงในบัญชีและเซิร์ฟเวอร์คลาวด์เป็นผลงานล่าสุด (กดซ้ำเพื่อเซฟทับตัวล่าสุด เทมเพลตเดิมจะไม่ถูกทับ)"
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>บันทึก</span>
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>กำลังเซฟ...</span>
+                </>
+              ) : isSaved ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>บันทึกแล้ว</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>บันทึกผลงาน</span>
+                </>
+              )}
             </button>
           )}
 

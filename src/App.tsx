@@ -53,6 +53,7 @@ import {
 import { getCurrentUser, logoutTeamUser, loginTeamUserAsync, syncSessionFromServer } from './services/teamAuthStore';
 import {
   saveUserDashboard,
+  saveUserDashboardAsync,
   loadUserDashboard,
   loadUserDashboardFromCloud,
   loadDashboardByShareParams,
@@ -99,6 +100,8 @@ export default function App() {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>(() => initialUserDash?.widgets?.[0]?.id || 'chart-category');
   const [dashboardTitle, setDashboardTitle] = useState<string>(() => initialUserDash?.dashboardTitle || (currentTeamUser ? `แดชบอร์ดของ ${currentTeamUser.displayName}` : 'ภาพรวมยอดขาย'));
   const [isSaved, setIsSaved] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveToastMsg, setSaveToastMsg] = useState<string | null>(null);
 
   // Automatically persist user-specific salesData locally
   useEffect(() => {
@@ -600,13 +603,18 @@ export default function App() {
     }
   };
 
-  // Perform save to Cloud Database with full configuration (Requirement 4)
+  // Perform save to Cloud Database & Server File System
+  // Saves as user's latest work ("ผลงานล่าสุด"), overwriting latest active draft when saved again.
+  // Saved preset templates and organization templates remain 100% untouched and safe!
   const performSave = React.useCallback(
-    async (isAuto = false) => {
-      if (!currentTeamUser?.id || isPopulatingUserDataRef.current) return;
+    async (isManual = false) => {
+      const activeUser = currentTeamUser || getCurrentUser();
+      if (!activeUser?.id) return;
+      if (!isManual && isPopulatingUserDataRef.current) return;
+
+      setIsSaving(true);
       try {
-        const timeStr = new Date().toLocaleTimeString('th-TH');
-        saveUserDashboard(currentTeamUser.id, {
+        const res = await saveUserDashboardAsync(activeUser.id, {
           widgets,
           salesData,
           dashboardTitle,
@@ -615,14 +623,24 @@ export default function App() {
           connectionConfig,
           spacingMode,
         });
+
         setIsSaved(true);
-        setLastSavedTime(timeStr);
+        if (res.lastSavedAt) {
+          setLastSavedTime(res.lastSavedAt);
+        }
+
+        if (isManual) {
+          setSaveToastMsg(`✓ บันทึกผลงานล่าสุดลงเซิร์ฟเวอร์เรียบร้อยแล้ว (${res.lastSavedAt})`);
+          setTimeout(() => setSaveToastMsg(null), 3500);
+        }
       } catch (err) {
         console.warn('Save failed:', err);
+      } finally {
+        setIsSaving(false);
       }
     },
     [
-      currentTeamUser?.id,
+      currentTeamUser,
       widgets,
       salesData,
       dashboardTitle,
@@ -722,27 +740,13 @@ export default function App() {
   // Debounced Auto-Save upon any change (instant local-first, zero data loss!)
   useEffect(() => {
     if (!currentTeamUser?.id || isPopulatingUserDataRef.current) return;
+    setIsSaved(false);
     const timer = setTimeout(() => {
-      try {
-        const timeStr = new Date().toLocaleTimeString('th-TH');
-        saveUserDashboard(currentTeamUser.id, {
-          widgets,
-          salesData,
-          dashboardTitle,
-          themeConfig,
-          filterState,
-          connectionConfig,
-          spacingMode,
-        });
-        setIsSaved(true);
-        setLastSavedTime(timeStr);
-      } catch (e) {
-        console.warn('Auto-save error', e);
-      }
-    }, 400);
+      performSave(false);
+    }, 700);
 
     return () => clearTimeout(timer);
-  }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode, currentTeamUser?.id]);
+  }, [widgets, salesData, dashboardTitle, themeConfig, filterState, connectionConfig, spacingMode, currentTeamUser?.id, performSave]);
 
   const handleAdoptTemplate = (template: DashboardTemplate) => {
     setWidgets(template.widgets);
@@ -1412,8 +1416,9 @@ export default function App() {
           dashboardTitle={dashboardTitle}
           onUpdateTitle={setDashboardTitle}
           isSaved={isSaved}
+          isSaving={isSaving}
           lastSavedAt={lastSavedTime}
-          onSaveDashboard={() => performSave(false)}
+          onSaveDashboard={() => performSave(true)}
           onExportFile={() => {
             exportDashboardToFile({
               widgets,
@@ -1507,6 +1512,14 @@ export default function App() {
           isTestRoute={isTestRoute}
           dashboardId={initialUserDash?.dashboardId || (currentTeamUser ? `dash-${currentTeamUser.id}` : 'dash-main')}
         />
+
+        {/* Floating Real-time Save Confirmation Banner */}
+        {saveToastMsg && (
+          <div className="absolute top-16 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-950/95 border border-emerald-400 text-emerald-200 text-xs font-semibold shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>{saveToastMsg}</span>
+          </div>
+        )}
 
         {/* Central Visual Canvas */}
         <div className="flex-1 flex overflow-hidden relative">

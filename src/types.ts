@@ -338,6 +338,9 @@ export interface TeamUser {
   lastLoginAt?: string;
   assignedTemplateIds?: string[];
   password?: string;
+  accountType?: 'team' | 'customer' | 'admin';
+  plan?: 'Free' | 'Basic' | 'Pro' | 'Enterprise';
+  company?: string;
 }
 
 export interface DashboardTemplate {

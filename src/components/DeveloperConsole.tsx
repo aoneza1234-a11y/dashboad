@@ -596,7 +596,7 @@ export const DeveloperConsole: React.FC<DeveloperConsoleProps> = ({
 
           {[
             { id: 'registry', label: '1. Dashboard Registry', icon: LayoutDashboard, badge: dashboards.length },
-            { id: 'users', label: '2. User & Role Management', icon: Users, badge: users.length },
+            { id: 'users', label: '2. User & Role Management', icon: Users, badge: teamUsers.length },
             { id: 'widgets', label: '3. Widget Builder', icon: Boxes, badge: '5' },
             { id: 'themes', label: '4. Theme Builder (แบรนด์)', icon: Palette, badge: 'Toyota' },
             { id: 'datasources', label: '5. Data Source Manager', icon: Database, badge: dataSources.length },
@@ -1047,7 +1047,15 @@ export const DeveloperConsole: React.FC<DeveloperConsoleProps> = ({
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[10px] text-slate-400">สมัครเมื่อ {u.createdAt}</div>
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                    <span>สมัครเมื่อ {u.createdAt}</span>
+                                    <span>•</span>
+                                    {(!u.lastLoginAt || u.lastLoginAt.includes('ยังไม่เคย') || u.lastLoginAt.includes('เพิ่งสมัคร')) ? (
+                                      <span className="text-slate-400 font-medium">⚪ ยังไม่เคยเข้าสู่ระบบ</span>
+                                    ) : (
+                                      <span className="text-emerald-400 font-medium">🟢 {u.lastLoginAt}</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </td>
