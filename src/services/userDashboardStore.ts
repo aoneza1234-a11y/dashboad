@@ -39,37 +39,46 @@ export interface UserDashboardData {
 const STORAGE_PREFIX = 'user_dashboard_';
 const SALES_PREFIX = 'user_sales_data_';
 
-export function getUserDashboardKey(userId: string): string {
+export function getUserDashboardKey(userId?: string | null): string {
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return `${STORAGE_PREFIX}default_user`;
+  }
   const safeId = encodeURIComponent(userId.trim().toLowerCase() || 'default_user');
   return `${STORAGE_PREFIX}${safeId}`;
 }
 
-export function getUserSalesDataKey(userId: string): string {
+export function getUserSalesDataKey(userId?: string | null): string {
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return `${SALES_PREFIX}default_user`;
+  }
   const safeId = encodeURIComponent(userId.trim().toLowerCase() || 'default_user');
   return `${SALES_PREFIX}${safeId}`;
 }
 
 // Synchronous fast-read for instant boot (<5ms)
-export function loadUserDashboard(userId: string): UserDashboardData | null {
+export function loadUserDashboard(userId?: string | null): UserDashboardData | null {
   if (typeof window === 'undefined') return null;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) return null;
+  const cleanId = userId.trim();
+
   try {
-    const key = getUserDashboardKey(userId);
+    const key = getUserDashboardKey(cleanId);
     let raw = localStorage.getItem(key);
     if (!raw) {
-      raw = localStorage.getItem(`user_dashboard_${userId}`);
+      raw = localStorage.getItem(`user_dashboard_${cleanId}`);
     }
     if (!raw) {
-      raw = localStorage.getItem(`user_dashboard_${userId.trim().toLowerCase()}`);
+      raw = localStorage.getItem(`user_dashboard_${cleanId.toLowerCase()}`);
     }
 
     // Retrieve user-specific isolated sales data
-    const salesKey = getUserSalesDataKey(userId);
+    const salesKey = getUserSalesDataKey(cleanId);
     let rawSales = localStorage.getItem(salesKey);
     if (!rawSales) {
-      rawSales = localStorage.getItem(`user_sales_data_${userId}`);
+      rawSales = localStorage.getItem(`user_sales_data_${cleanId}`);
     }
     if (!rawSales) {
-      rawSales = localStorage.getItem(`user_sales_data_${userId.trim().toLowerCase()}`);
+      rawSales = localStorage.getItem(`user_sales_data_${cleanId.toLowerCase()}`);
     }
 
     let parsed: any = null;
@@ -182,16 +191,19 @@ export async function refreshUserLiveData(
 }
 
 // Asynchronous Cloud Database & Server File loader with single source of truth across all devices
-export async function loadUserDashboardFromCloud(userId: string): Promise<UserDashboardData | null> {
+export async function loadUserDashboardFromCloud(userId?: string | null): Promise<UserDashboardData | null> {
+  if (!userId || typeof userId !== 'string' || !userId.trim()) return null;
+  const cleanId = userId.trim();
+
   // 1. Query Server File Storage API first (Authoritative source across all computers and browsers!)
   try {
-    const serverFile = await loadDashboardFromServerFile(userId);
+    const serverFile = await loadDashboardFromServerFile(cleanId);
     if (serverFile && serverFile.widgets && Array.isArray(serverFile.widgets) && serverFile.widgets.length > 0) {
       if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem(getUserDashboardKey(userId), JSON.stringify(serverFile));
+          localStorage.setItem(getUserDashboardKey(cleanId), JSON.stringify(serverFile));
           if (serverFile.salesData && serverFile.salesData.length > 0) {
-            localStorage.setItem(getUserSalesDataKey(userId), JSON.stringify(serverFile.salesData));
+            localStorage.setItem(getUserSalesDataKey(cleanId), JSON.stringify(serverFile.salesData));
           }
         } catch (e) {}
       }
@@ -203,7 +215,7 @@ export async function loadUserDashboardFromCloud(userId: string): Promise<UserDa
 
   // 2. Query Cloud Database (Firestore / IndexedDB)
   try {
-    const latest = await dbGetLatestDashboard(userId);
+    const latest = await dbGetLatestDashboard(cleanId);
     if (latest && latest.dashboardConfig && latest.dashboardConfig.widgets && latest.dashboardConfig.widgets.length > 0) {
       const data: UserDashboardData = {
         dashboardId: latest.dashboardId,
@@ -324,12 +336,16 @@ export async function loadDashboardByShareParams(userId?: string | null, dashId?
 // Saves this active dashboard as user's latest work ("ผลงานล่าสุด"), overwriting latest active draft when saved again.
 // Saved templates and presets remain untouched and safe!
 export async function saveUserDashboardAsync(
-  userId: string,
-  data: Omit<UserDashboardData, 'lastSavedAt'>,
+  userId?: string | null,
+  data?: Omit<UserDashboardData, 'lastSavedAt'> | null,
   dashboardId?: string
 ): Promise<{ success: boolean; lastSavedAt: string; fileName?: string; error?: string }> {
+  if (!userId || typeof userId !== 'string' || !userId.trim() || !data) {
+    return { success: false, lastSavedAt: '', error: 'Missing userId or data' };
+  }
+  const cleanId = userId.trim();
   const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dId = dashboardId || data.dashboardId || `dash-${userId}-${data.dashboardTitle.replace(/\s+/g, '_')}`;
+  const dId = dashboardId || data.dashboardId || `dash-${cleanId}-${(data.dashboardTitle || 'dash').replace(/\s+/g, '_')}`;
 
   const payload: UserDashboardData = {
     ...data,
@@ -340,16 +356,16 @@ export async function saveUserDashboardAsync(
   // 1. Fast cache update strictly under this user's isolated keys
   if (typeof window !== 'undefined') {
     try {
-      const key = getUserDashboardKey(userId);
+      const key = getUserDashboardKey(cleanId);
       const str = JSON.stringify(payload);
       localStorage.setItem(key, str);
-      localStorage.setItem(`user_dashboard_${userId}`, str);
-      localStorage.setItem(`user_dashboard_${userId.trim().toLowerCase()}`, str);
+      localStorage.setItem(`user_dashboard_${cleanId}`, str);
+      localStorage.setItem(`user_dashboard_${cleanId.toLowerCase()}`, str);
 
       const salesStr = JSON.stringify(data.salesData);
-      localStorage.setItem(getUserSalesDataKey(userId), salesStr);
-      localStorage.setItem(`user_sales_data_${userId}`, salesStr);
-      localStorage.setItem(`user_sales_data_${userId.trim().toLowerCase()}`, salesStr);
+      localStorage.setItem(getUserSalesDataKey(cleanId), salesStr);
+      localStorage.setItem(`user_sales_data_${cleanId}`, salesStr);
+      localStorage.setItem(`user_sales_data_${cleanId.toLowerCase()}`, salesStr);
     } catch (e) {
       console.warn('Fast cache error', e);
     }
@@ -359,7 +375,7 @@ export async function saveUserDashboardAsync(
 
   // 2. Persist to Server File System API (Authoritative source across all machines and browsers)
   try {
-    serverRes = await saveDashboardToServerFile(userId, payload);
+    serverRes = await saveDashboardToServerFile(cleanId, payload);
   } catch (err: any) {
     console.warn('Server file save notice:', err);
   }

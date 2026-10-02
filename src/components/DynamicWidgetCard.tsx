@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { VisualWidget, SalesRecord, FilterState } from '../types';
 import { ShapeWidget } from './ShapeWidget';
+import { WidgetHeaderIconBadge } from './WidgetHeaderIcon';
 import { calculateMetricValue, aggregateForWidget, applyRecordFilters } from '../utils/calcEngine';
 import { ThemeStyles } from '../utils/themeStyles';
 
@@ -1112,8 +1113,8 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
 
       {/* Header bar of Widget: Title & Action Controls (Hidden when showTitle === false or for shapes) */}
       {widget.showTitle !== false && !isShape && (
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 overflow-hidden">
+        <div className="flex items-center justify-between mb-2 gap-1.5">
+          <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: currentPalette[0] || '#8b5cf6' }}
@@ -1124,35 +1125,45 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
             {widget.locked && <Lock className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
 
-          {/* Quick Studio action buttons [⤢] [x] (Hidden in preview mode) */}
-          {!isPreviewMode && (
-            <div
-              className={`flex items-center gap-1 opacity-70 transition ${
-                isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
-            >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleMaximize(widget.id);
-                }}
-                title="ปรับขนาดเต็มความกว้าง"
-                className="hover:opacity-100 p-1 rounded transition cursor-pointer"
+          {/* Top-Right Widget Corner: Customizable Icon/Image badge + Quick Action Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Widget Corner Icon Badge: Can change picture/icon related to finance, money, business */}
+            <WidgetHeaderIconBadge
+              widget={widget}
+              onUpdateWidget={onUpdateWidget}
+              isPreviewMode={isPreviewMode}
+            />
+
+            {/* Quick Studio action buttons [⤢] [x] (Hidden in preview mode) */}
+            {!isPreviewMode && (
+              <div
+                className={`flex items-center gap-0.5 opacity-70 transition ${
+                  isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}
               >
-                <Maximize2 className="w-3 h-3" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(widget.id);
-                }}
-                title="ลบวิดเจ็ต"
-                className="hover:text-rose-500 p-1 rounded transition cursor-pointer"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMaximize(widget.id);
+                  }}
+                  title="ปรับขนาดเต็มความกว้าง"
+                  className="hover:opacity-100 p-1 rounded transition cursor-pointer"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(widget.id);
+                  }}
+                  title="ลบวิดเจ็ต"
+                  className="hover:text-rose-500 p-1 rounded transition cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

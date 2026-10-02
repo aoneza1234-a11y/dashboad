@@ -20,6 +20,7 @@ import { AdminPlatform } from './components/AdminPlatform/AdminPlatform';
 import { AdminAccessGate } from './components/AdminAccessGate';
 import { PublicViewerPortal } from './components/PublicViewerPortal';
 import { MaintenanceScreen } from './components/MaintenanceScreen';
+import { WelcomeLandingPortal } from './components/WelcomeLandingPortal';
 import { AuthModal } from './components/AuthModal';
 import { AssignedTemplatesModal } from './components/AssignedTemplatesModal';
 import { UserPublishModal } from './components/UserPublishModal';
@@ -50,7 +51,7 @@ import {
   TeamUser,
   DashboardTemplate,
 } from './types';
-import { getCurrentUser, logoutTeamUser, loginTeamUserAsync, syncSessionFromServer } from './services/teamAuthStore';
+import { getCurrentUser, logoutTeamUser, loginTeamUserAsync, syncSessionFromServer, DEFAULT_USERS, mapDBUserToTeamUser } from './services/teamAuthStore';
 import {
   saveUserDashboard,
   saveUserDashboardAsync,
@@ -494,28 +495,36 @@ export default function App() {
         return;
       }
 
+      const targetUserId = user?.id || (user as any)?.userId;
+      if (!targetUserId) {
+        setTimeout(() => {
+          isPopulatingUserDataRef.current = false;
+        }, 150);
+        return;
+      }
+
       // 1. Fast initial bootstrap from local cache (<1ms) so screen renders without blinking
-      const cached = loadUserDashboard(user.id);
+      const cached = loadUserDashboard(targetUserId);
       if (cached && cached.widgets && cached.widgets.length > 0) {
         applyDashboardData(cached);
       }
 
       // 2. Database-First Single Source of Truth: ALWAYS fetch authoritative dashboard from Server & Cloud
-      loadUserDashboardFromCloud(user.id)
+      loadUserDashboardFromCloud(targetUserId)
         .then((cloudData) => {
           if (cloudData && cloudData.widgets && cloudData.widgets.length > 0) {
             applyDashboardData(cloudData);
           } else if (!cached || !cached.widgets || cached.widgets.length === 0) {
             const starter = getStarterUserDashboard(user);
             applyDashboardData(starter);
-            saveUserDashboard(user.id, starter);
+            saveUserDashboard(targetUserId, starter);
           }
         })
         .catch(() => {
           if (!cached || !cached.widgets || cached.widgets.length === 0) {
             const starter = getStarterUserDashboard(user);
             applyDashboardData(starter);
-            saveUserDashboard(user.id, starter);
+            saveUserDashboard(targetUserId, starter);
           }
         })
         .finally(() => {
@@ -597,7 +606,7 @@ export default function App() {
     clearUserDashboardSession();
     setCurrentTeamUser(null);
     applyUserDashboard(null);
-    setIsAuthModalOpen(true);
+    setIsAuthModalOpen(false);
     if (viewMode === 'dev_console') {
       setViewMode('studio');
     }
@@ -630,8 +639,8 @@ export default function App() {
         }
 
         if (isManual) {
-          setSaveToastMsg(`✓ บันทึกผลงานล่าสุดลงเซิร์ฟเวอร์เรียบร้อยแล้ว (${res.lastSavedAt})`);
-          setTimeout(() => setSaveToastMsg(null), 3500);
+          setSaveToastMsg(`✓ บันทึกผลงานล่าสุดลงเซิร์ฟเวอร์เรียบร้อยแล้ว (${res.lastSavedAt || 'เพิ่งบันทึก'}) • เซฟทับดราฟต์ล่าสุด (เทมเพลตเดิมไม่ถูกทับ)`);
+          setTimeout(() => setSaveToastMsg(null), 4000);
         }
       } catch (err) {
         console.warn('Save failed:', err);
@@ -1217,18 +1226,12 @@ export default function App() {
 
   if (viewMode === 'public_viewer') {
     // Check if website is closed for maintenance across all systems
-    if (!siteStatus.isOnline && !adminBypass) {
+    if (!siteStatus.isOnline) {
       return (
         <MaintenanceScreen
           status={siteStatus}
           onRefresh={() => {
             fetchSiteStatusFromServer().then(setSiteStatus);
-          }}
-          onBypass={() => {
-            setAdminBypass(true);
-          }}
-          onAdminPortal={() => {
-            handleNavigateToDevAdmin();
           }}
         />
       );
@@ -1256,19 +1259,27 @@ export default function App() {
 
   // Studio Portal (User Portal)
   // 1. Master System Shutdown: When website is closed, close it across ALL browsers, devices, and viewers!
-  // Unless explicitly unlocked with Admin PIN (adminBypass) or in dev console (/dev)
-  if (!siteStatus.isOnline && !adminBypass && viewMode !== 'dev_console') {
+  // No backdoor, no bypass link to backend - only displays maintenance information as defined by admin!
+  if (!siteStatus.isOnline && viewMode !== 'dev_console') {
     return (
       <MaintenanceScreen
         status={siteStatus}
         onRefresh={() => {
           fetchSiteStatusFromServer().then(setSiteStatus);
         }}
-        onBypass={() => {
-          setAdminBypass(true);
-        }}
-        onAdminPortal={() => {
-          handleNavigateToDevAdmin();
+      />
+    );
+  }
+
+  // 2. Unauthenticated Visitors / First-time Entry:
+  // Render the gorgeous Welcome & Step-by-Step Entry Landing Portal!
+  // Does not force Admin ID, does not pop up a bare input ID modal. Has 4-step walkthrough and smooth login.
+  if (!currentTeamUser && viewMode === 'studio') {
+    return (
+      <WelcomeLandingPortal
+        onLoginSuccess={(user) => {
+          setCurrentTeamUser(user);
+          applyUserDashboard(user);
         }}
       />
     );

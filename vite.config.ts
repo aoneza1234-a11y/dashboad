@@ -208,12 +208,17 @@ function dashboardFileStoragePlugin(): Plugin {
 
                 // Login
                 if (action === 'login') {
-                  const email = (parsed.email || '').trim().toLowerCase();
-                  const found = users.find((u: any) => (u.email || '').toLowerCase() === email);
+                  const term = (parsed.email || parsed.userId || parsed.username || '').trim().toLowerCase();
+                  const found = users.find((u: any) =>
+                    (u.email || '').toLowerCase() === term ||
+                    (u.userId || '').toLowerCase() === term ||
+                    (u.id || '').toLowerCase() === term ||
+                    (u.name || '').toLowerCase() === term
+                  );
                   if (!found) {
                     res.statusCode = 404;
                     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                    res.end(JSON.stringify({ success: false, error: 'ไม่พบผู้ใช้นี้ในระบบ' }));
+                    res.end(JSON.stringify({ success: false, error: 'ไม่พบผู้ใช้นี้ในระบบ (ตรวจสอบอีเมลหรือชื่อผู้ใช้)' }));
                     return;
                   }
                   // Verify password
@@ -341,19 +346,8 @@ function dashboardFileStoragePlugin(): Plugin {
           }
 
           const defaultSession = {
-            currentUserId: 'usr-admin-primary',
-            user: {
-              userId: 'usr-admin-primary',
-              id: 'usr-admin-primary',
-              email: 'aoneza1234@gmail.com',
-              name: 'Thirawat (เจ้าของระบบ)',
-              displayName: 'Thirawat (เจ้าของระบบ)',
-              role: 'admin',
-              department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
-              createdDate: '2026-01-01T00:00:00.000Z',
-              createdAt: '2026-01-01',
-              lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
-            },
+            currentUserId: null,
+            user: null,
           };
 
           if (req.method === 'GET') {
@@ -366,7 +360,6 @@ function dashboardFileStoragePlugin(): Plugin {
                 return;
               } catch (e) {}
             }
-            fs.writeFileSync(sessionFile, JSON.stringify(defaultSession, null, 2), 'utf-8');
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             res.end(JSON.stringify(defaultSession));

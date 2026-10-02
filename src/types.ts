@@ -119,6 +119,12 @@ export interface VisualWidget {
   drillLevels?: string[];
   currentDrillLevel?: number;
   drillFilters?: { dimension: string; value: string }[];
+  headerIcon?: string;
+  headerIconType?: 'icon' | 'image' | 'emoji';
+  headerImageUrl?: string;
+  showHeaderIcon?: boolean;
+  headerIconColor?: string;
+  headerIconBg?: string;
   config?: Record<string, any>;
 }
 

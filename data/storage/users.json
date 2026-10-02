@@ -1,5 +1,24 @@
 [
   {
+    "userId": "user1",
+    "email": "user1@company.com",
+    "password": "password123",
+    "name": "User 1 (ผู้ใช้งานระบบ)",
+    "displayName": "User 1 (ผู้ใช้งานระบบ)",
+    "role": "editor",
+    "status": "active",
+    "accountType": "team",
+    "plan": "Pro",
+    "company": "VISTA Client Team",
+    "department": "ฝ่ายปฏิบัติการและวิเคราะห์ข้อมูล",
+    "createdDate": "2026-03-31T00:00:00.000Z",
+    "lastLoginAt": "07:11",
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-2"
+    ]
+  },
+  {
     "userId": "usr-admin-primary",
     "email": "aoneza1234@gmail.com",
     "password": "password123",
@@ -13,7 +32,11 @@
     "department": "ผู้ดูแลระบบและวิเคราะห์ข้อมูล",
     "createdDate": "2026-01-01T00:00:00.000Z",
     "lastLoginAt": "วันนี้ (กำลังใช้งาน)",
-    "assignedTemplateIds": ["tpl-1", "tpl-2", "tpl-3"]
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-2",
+      "tpl-3"
+    ]
   },
   {
     "userId": "usr-admin-1",
@@ -29,7 +52,12 @@
     "department": "ฝ่ายบริหาร & ไอที",
     "createdDate": "2026-01-15T00:00:00.000Z",
     "lastLoginAt": "วันนี้ 15:30",
-    "assignedTemplateIds": ["tpl-1", "tpl-2", "tpl-3", "tpl-4"]
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-2",
+      "tpl-3",
+      "tpl-4"
+    ]
   },
   {
     "userId": "usr-sales-1",
@@ -45,7 +73,10 @@
     "department": "ฝ่ายขายและการตลาด",
     "createdDate": "2026-02-01T00:00:00.000Z",
     "lastLoginAt": "เมื่อวานนี้ 18:20",
-    "assignedTemplateIds": ["tpl-1", "tpl-2"]
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-2"
+    ]
   },
   {
     "userId": "usr-editor-1",
@@ -61,7 +92,10 @@
     "department": "ฝ่ายกลยุทธ์การตลาด",
     "createdDate": "2026-02-10T00:00:00.000Z",
     "lastLoginAt": "วันนี้ 10:15",
-    "assignedTemplateIds": ["tpl-1", "tpl-3"]
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-3"
+    ]
   },
   {
     "userId": "usr-editor-2",
@@ -77,7 +111,9 @@
     "department": "ฝ่ายพัฒนาธุรกิจและงานขาย",
     "createdDate": "2026-02-20T00:00:00.000Z",
     "lastLoginAt": "เมื่อวาน 16:45",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   },
   {
     "userId": "usr-editor-3",
@@ -93,7 +129,9 @@
     "department": "ฝ่ายบัญชีและการเงิน",
     "createdDate": "2026-02-25T00:00:00.000Z",
     "lastLoginAt": "4 วันที่แล้ว",
-    "assignedTemplateIds": ["tpl-2"]
+    "assignedTemplateIds": [
+      "tpl-2"
+    ]
   },
   {
     "userId": "usr-cust-1",
@@ -109,7 +147,9 @@
     "department": "ลูกค้าภายนอก (องค์กร)",
     "createdDate": "2026-03-01T00:00:00.000Z",
     "lastLoginAt": "วันนี้ 09:30",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   },
   {
     "userId": "usr-cust-2",
@@ -125,7 +165,10 @@
     "department": "กรรมการผู้จัดการ",
     "createdDate": "2026-03-10T00:00:00.000Z",
     "lastLoginAt": "เมื่อวานนี้ 14:20",
-    "assignedTemplateIds": ["tpl-1", "tpl-2"]
+    "assignedTemplateIds": [
+      "tpl-1",
+      "tpl-2"
+    ]
   },
   {
     "userId": "usr-cust-3",
@@ -141,7 +184,9 @@
     "department": "ฝ่ายไอทีและระบบคลาวด์",
     "createdDate": "2026-03-25T00:00:00.000Z",
     "lastLoginAt": "ยังไม่เคยเข้าสู่ระบบ",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   },
   {
     "userId": "usr-cust-4",
@@ -157,7 +202,9 @@
     "department": "การตลาดออนไลน์",
     "createdDate": "2026-03-29T00:00:00.000Z",
     "lastLoginAt": "ยังไม่เคยเข้าสู่ระบบ",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   },
   {
     "userId": "usr-cust-5",
@@ -173,7 +220,9 @@
     "department": "คลังสินค้าและการจัดส่ง",
     "createdDate": "2026-03-30T00:00:00.000Z",
     "lastLoginAt": "ยังไม่เคยเข้าสู่ระบบ",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   },
   {
     "userId": "usr-sales-2",
@@ -189,6 +238,8 @@
     "department": "ทีมปฏิบัติการสาขา",
     "createdDate": "2026-02-10T00:00:00.000Z",
     "lastLoginAt": "3 วันที่แล้ว",
-    "assignedTemplateIds": ["tpl-1"]
+    "assignedTemplateIds": [
+      "tpl-1"
+    ]
   }
 ]

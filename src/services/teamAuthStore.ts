@@ -13,10 +13,12 @@ import {
 
 const SESSION_STORAGE_KEY = 'bi_studio_current_session_v1';
 
+export { DEFAULT_USERS } from './cloudDatabase';
+
 // Seed initial users on module load
 seedInitialDatabase().catch(console.warn);
 
-function mapDBUserToTeamUser(u: DBUser): TeamUser {
+export function mapDBUserToTeamUser(u: DBUser): TeamUser {
   return {
     id: u.userId,
     email: u.email,
@@ -33,58 +35,50 @@ function mapDBUserToTeamUser(u: DBUser): TeamUser {
 }
 
 export function getCurrentSessionUser(): TeamUser | null {
-  if (typeof window === 'undefined') return mapDBUserToTeamUser(DEFAULT_USERS[0]);
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    // Explicit logged-out state: do not re-login as default user!
-    if (raw === 'LOGGED_OUT') {
+    // Explicit logged-out or unauthenticated state
+    if (!raw || raw === 'LOGGED_OUT' || raw === 'null') {
       return null;
     }
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.id || parsed.userId)) return parsed;
-    }
+    const parsed = JSON.parse(raw);
+    if (parsed && (parsed.id || parsed.userId)) return parsed;
   } catch (err) {}
 
-  // First time ever visiting: default to owner user account
-  const defaultUser = mapDBUserToTeamUser(DEFAULT_USERS[0]);
-  try {
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(defaultUser));
-  } catch (e) {}
-  return defaultUser;
+  return null;
 }
 
 export const getCurrentUser = getCurrentSessionUser;
 
 export async function syncSessionFromServer(): Promise<TeamUser | null> {
+  const local = getCurrentSessionUser();
+  if (!local) {
+    // If not authenticated locally on this browser, remain unauthenticated (visitor/guest)
+    return null;
+  }
+
   try {
-    const res = await fetch('/api/session', { headers: { 'Cache-Control': 'no-cache' } });
+    // Verify and refresh latest user data from server
+    const res = await fetch('/api/users', { headers: { 'Cache-Control': 'no-cache' } });
     if (res.ok) {
-      const data = await res.json();
-      if (data && data.user) {
-        const u = data.user;
-        const teamUser: TeamUser = {
-          id: u.userId || u.id,
-          email: u.email,
-          displayName: u.displayName || u.name,
-          name: u.name || u.displayName,
-          role: u.role || 'admin',
-          status: 'active',
-          department: u.department || 'ทีมทั่วไป',
-          createdAt: u.createdAt || u.createdDate || '2026-01-01',
-          lastLoginAt: u.lastLoginAt || 'เพิ่งเข้าสู่ระบบ',
-          assignedTemplateIds: ['tpl-1'],
-          password: u.password,
-        };
+      const allUsers: any[] = await res.json();
+      const updated = allUsers.find(
+        (u: any) =>
+          u.userId === local.id ||
+          u.id === local.id ||
+          (u.email && local.email && u.email.toLowerCase() === local.email.toLowerCase())
+      );
+      if (updated) {
+        const teamUser = mapDBUserToTeamUser(updated);
         try {
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(teamUser));
         } catch (e) {}
-        window.dispatchEvent(new CustomEvent('team_session_changed', { detail: teamUser }));
         return teamUser;
       }
     }
   } catch (e) {}
-  return getCurrentSessionUser();
+  return local;
 }
 
 export function setCurrentSessionUser(user: TeamUser | null): void {

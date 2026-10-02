@@ -292,31 +292,22 @@ export const TopBar: React.FC<TopBarProps> = ({
               id="btn-manual-save-dashboard"
               onClick={onSaveDashboard}
               disabled={isSaving}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold text-xs shadow-xs transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold text-xs shadow-md transition cursor-pointer active:scale-95 ${
                 isSaving
-                  ? 'bg-emerald-700/80 text-white cursor-wait opacity-90'
-                  : isSaved
-                    ? isLight
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-700/20'
-                      : 'bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400/40'
-                    : 'bg-amber-600 hover:bg-amber-500 text-white ring-2 ring-amber-400/40'
+                  ? 'bg-emerald-800 text-emerald-200 cursor-wait'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 shadow-emerald-900/30'
               }`}
-              title="บันทึกแดชบอร์ดลงในบัญชีและเซิร์ฟเวอร์คลาวด์เป็นผลงานล่าสุด (กดซ้ำเพื่อเซฟทับตัวล่าสุด เทมเพลตเดิมจะไม่ถูกทับ)"
+              title="กดบันทึกแดชบอร์ดลงในบัญชีและเซิร์ฟเวอร์เป็นผลงานล่าสุด (กดซ้ำเพื่อเซฟทับตัวล่าสุด เทมเพลตเดิมที่บันทึกไว้จะไม่ถูกทับ)"
             >
               {isSaving ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>กำลังเซฟ...</span>
                 </>
-              ) : isSaved ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>บันทึกแล้ว</span>
-                </>
               ) : (
                 <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>บันทึกผลงาน</span>
+                  <Save className="w-3.5 h-3.5 text-white" />
+                  <span>บันทึกผลงานล่าสุด</span>
                 </>
               )}
             </button>

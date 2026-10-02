@@ -58,6 +58,7 @@ import {
   CalculatedField,
 } from '../types';
 import { getRecordValue } from '../utils/calcEngine';
+import { WIDGET_ICONS, getDefaultIconForWidget } from './WidgetHeaderIcon';
 
 interface InspectorProps {
   widget: VisualWidget | null;
@@ -731,6 +732,91 @@ export const Inspector: React.FC<InspectorProps> = ({
                   'toggle-skip-blanks',
                   'ข้ามแถวที่ไม่มีข้อมูล'
                 )}
+              </div>
+
+              {/* Corner Icon & Image Configuration (ไอคอน / รูปภาพมุมขวาหัวกราฟ) */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>รูปภาพและไอคอนมุมขวาหัวกราฟ</span>
+                  </div>
+                  {widget.showHeaderIcon !== false && (
+                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      แสดงอยู่
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-white p-3 rounded-lg border border-slate-200/70 shadow-2xs space-y-3">
+                  {renderToggle(
+                    'เปิดแสดงไอคอนมุมขวา (Corner Icon Badge)',
+                    widget.showHeaderIcon !== false,
+                    (val) => onUpdateWidget(widget.id, { showHeaderIcon: val }),
+                    'toggle-show-header-icon',
+                    'แสดงไอคอนหรือรูปภาพตกแต่งที่มุมขวาบนของวิดเจ็ต'
+                  )}
+
+                  {widget.showHeaderIcon !== false && (
+                    <>
+                      {/* Icon Grid */}
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-700 block mb-1.5">
+                          เลือกไอคอนการเงิน สถิติ และธุรกิจ:
+                        </span>
+                        <div className="grid grid-cols-5 gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                          {WIDGET_ICONS.map((item) => {
+                            const Icon = item.component;
+                            const isCurrent =
+                              widget.headerIcon === item.id ||
+                              (!widget.headerIcon && getDefaultIconForWidget(widget) === item.id);
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateWidget(widget.id, {
+                                    headerIcon: item.id,
+                                    headerIconType: 'icon',
+                                    showHeaderIcon: true,
+                                  })
+                                }
+                                className={`p-1.5 rounded-md flex flex-col items-center justify-center text-xs transition cursor-pointer border ${
+                                  isCurrent
+                                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm ring-1 ring-violet-400'
+                                    : 'bg-white text-slate-700 hover:bg-violet-50 hover:text-violet-700 border-slate-200'
+                                }`}
+                                title={item.name}
+                              >
+                                <Icon className="w-4 h-4" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Custom Image URL */}
+                      <div>
+                        <span className="text-[11px] font-semibold text-slate-700 block mb-1">
+                          หรือใส่ URL รูปภาพกำหนดเอง:
+                        </span>
+                        <input
+                          type="text"
+                          value={widget.headerImageUrl || ''}
+                          onChange={(e) =>
+                            onUpdateWidget(widget.id, {
+                              headerImageUrl: e.target.value,
+                              headerIconType: e.target.value.trim() ? 'image' : 'icon',
+                              showHeaderIcon: true,
+                            })
+                          }
+                          placeholder="https://... ลิงก์รูปภาพ โลโก้ หรือภาพเหรียญ"
+                          className="w-full text-xs px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:border-violet-500 bg-white text-slate-800"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {widget.type === 'kpi' && (
