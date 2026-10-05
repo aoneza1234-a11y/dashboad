@@ -273,8 +273,6 @@ export async function loadUserDashboardFromCloud(userId?: any): Promise<UserDash
 
 // Load customized dashboard specifically for public viewers by sharer's userId and/or dashboardId
 export async function loadDashboardByShareParams(userId?: string | null, dashId?: string | null): Promise<UserDashboardData | null> {
-  if (!userId && !dashId) return null;
-
   // 1. Query shared dashboard hub (/api/shared-dashboards)
   try {
     const params = new URLSearchParams();
@@ -308,35 +306,33 @@ export async function loadDashboardByShareParams(userId?: string | null, dashId?
     console.warn('Load shared dashboard API warning', err);
   }
 
-  // 2. Query /api/user-dashboard?userId=...
-  if (userId) {
-    try {
-      const userRes = await fetch(`/api/user-dashboard?userId=${encodeURIComponent(userId)}`);
-      if (userRes.ok) {
-        const data = await userRes.json();
-        if (data && data.widgets && Array.isArray(data.widgets) && data.widgets.length > 0) {
-          return {
-            dashboardId: data.dashboardId || dashId || undefined,
-            widgets: data.widgets,
-            salesData: Array.isArray(data.salesData) && data.salesData.length > 0 ? data.salesData : INITIAL_SALES_RECORDS,
-            dashboardTitle: data.dashboardTitle || 'แดชบอร์ดที่แชร์',
-            themeConfig: data.themeConfig || {
-              preset: 'violet',
-              primaryColor: '#7c3aed',
-              fontFamily: 'Prompt',
-              borderRadius: 'rounded-lg',
-              shadowStyle: 'shadow-sm',
-            },
-            filterState: data.filterState,
-            connectionConfig: data.connectionConfig,
-            spacingMode: data.spacingMode || 'ปกติ',
-            lastSavedAt: data.lastSavedAt || '',
-          };
-        }
+  // 2. Query /api/user-dashboard
+  try {
+    const uParam = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const userRes = await fetch(`/api/user-dashboard${uParam}`);
+    if (userRes.ok) {
+      const data = await userRes.json();
+      if (data && data.widgets && Array.isArray(data.widgets) && data.widgets.length > 0) {
+        return {
+          dashboardId: data.dashboardId || dashId || undefined,
+          widgets: data.widgets,
+          salesData: Array.isArray(data.salesData) && data.salesData.length > 0 ? data.salesData : INITIAL_SALES_RECORDS,
+          dashboardTitle: data.dashboardTitle || 'แดชบอร์ดที่แชร์',
+          themeConfig: data.themeConfig || {
+            preset: 'violet',
+            primaryColor: '#7c3aed',
+            fontFamily: 'Prompt',
+            borderRadius: 'rounded-lg',
+            shadowStyle: 'shadow-sm',
+          },
+          filterState: data.filterState,
+          connectionConfig: data.connectionConfig,
+          spacingMode: data.spacingMode || 'ปกติ',
+          lastSavedAt: data.lastSavedAt || '',
+        };
       }
-    } catch {}
-  }
-
+    }
+  } catch {}
   // 3. Fallback to local cache if viewer is on same device
   if (userId) {
     const local = loadUserDashboard(userId);

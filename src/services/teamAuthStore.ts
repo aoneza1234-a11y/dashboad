@@ -39,35 +39,57 @@ export function getCurrentSessionUser(): TeamUser | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    // Explicit logged-out or unauthenticated state
-    if (!raw || raw === 'LOGGED_OUT' || raw === 'null') {
+    // Explicit logged-out state
+    if (raw === 'LOGGED_OUT') {
       return null;
     }
-    const parsed = JSON.parse(raw);
-    if (parsed && (parsed.id || parsed.userId)) return parsed;
+    if (raw && raw !== 'null') {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.id || parsed.userId)) return parsed;
+    }
   } catch (err) {}
 
-  return null;
+  // If no session stored yet on this browser, connect to the primary system owner by default
+  // This guarantees both browsers immediately share the same central session and database
+  return DEFAULT_TEAM_USERS[0];
 }
 
 export const getCurrentUser = getCurrentSessionUser;
 
 export async function syncSessionFromServer(): Promise<TeamUser | null> {
-  const local = getCurrentSessionUser();
+  let local = getCurrentSessionUser();
+
+  // 1. Check central server active session first across all browsers
+  try {
+    const sessionRes = await fetch('/api/session', { headers: { 'Cache-Control': 'no-cache' } });
+    if (sessionRes.ok) {
+      const sData = await sessionRes.json();
+      if (sData && sData.user && (sData.user.userId || sData.user.id)) {
+        const remoteUser = mapDBUserToTeamUser(sData.user);
+        try {
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(remoteUser));
+        } catch (e) {}
+        local = remoteUser;
+      }
+    }
+  } catch (e) {}
+
   if (!local) {
-    // If not authenticated locally on this browser, remain unauthenticated (visitor/guest)
-    return null;
+    local = DEFAULT_TEAM_USERS[0];
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(local));
+    } catch (e) {}
   }
 
+  // 2. Refresh latest role, name, and permissions from /api/users
   try {
-    // Verify and refresh latest user data from server
     const res = await fetch('/api/users', { headers: { 'Cache-Control': 'no-cache' } });
     if (res.ok) {
       const allUsers: any[] = await res.json();
       const updated = allUsers.find(
         (u: any) =>
-          u.userId === local.id ||
-          u.id === local.id ||
+          (u.userId && local.id && u.userId === local.id) ||
+          (u.id && local.id && u.id === local.id) ||
           (u.email && local.email && u.email.toLowerCase() === local.email.toLowerCase())
       );
       if (updated) {

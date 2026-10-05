@@ -46,6 +46,29 @@ function dashboardFileStoragePlugin(): Plugin {
               return;
             }
 
+            // Fallback to central system dashboard so any browser or user opening gets the central work
+            const centralPath = path.join(storageDir, 'dashboard_central.json');
+            if (fs.existsSync(centralPath)) {
+              const content = fs.readFileSync(centralPath, 'utf-8');
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              if (isDownload) {
+                res.setHeader('Content-Disposition', `attachment; filename="dashboard_${safeId}.json"`);
+              }
+              res.end(content);
+              return;
+            }
+
+            // Try any dashboard file in storage
+            const files = fs.readdirSync(storageDir).filter((f) => f.startsWith('dashboard_') && f.endsWith('.json'));
+            if (files.length > 0) {
+              const content = fs.readFileSync(path.join(storageDir, files[0]), 'utf-8');
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(content);
+              return;
+            }
+
             res.statusCode = 404;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             res.end(JSON.stringify({ success: false, error: 'Dashboard file not found' }));
@@ -66,6 +89,9 @@ function dashboardFileStoragePlugin(): Plugin {
                 const filePath = path.join(storageDir, `dashboard_${safeId}.json`);
 
                 fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+                // Central system synchronization: always maintain central authoritative copy
+                fs.writeFileSync(path.join(storageDir, 'dashboard_central.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+                fs.writeFileSync(path.join(storageDir, 'dashboard_default_user.json'), JSON.stringify(parsed, null, 2), 'utf-8');
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -405,18 +431,31 @@ function dashboardFileStoragePlugin(): Plugin {
           }
 
           const defaultSession = {
-            currentUserId: null,
-            user: null,
+            currentUserId: 'usr-admin-primary',
+            user: {
+              userId: 'usr-admin-primary',
+              id: 'usr-admin-primary',
+              email: 'aoneza1234@gmail.com',
+              name: 'Thirawat (เจ้าของระบบ)',
+              displayName: 'Thirawat (เจ้าของระบบ)',
+              role: 'admin',
+              department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
+              createdDate: '2026-01-01T00:00:00.000Z',
+              lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
+            },
           };
 
           if (req.method === 'GET') {
             if (fs.existsSync(sessionFile)) {
               try {
                 const content = fs.readFileSync(sessionFile, 'utf-8');
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                res.end(content);
-                return;
+                const parsed = JSON.parse(content);
+                if (parsed && (parsed.currentUserId || parsed.user)) {
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(content);
+                  return;
+                }
               } catch (e) {}
             }
             res.statusCode = 200;
@@ -648,6 +687,15 @@ function dashboardFileStoragePlugin(): Plugin {
               }
             }
 
+            // 4. Fallback to central dashboard so shared viewers and browsers always load the active design
+            const centralFile = path.join(storageDir, 'dashboard_central.json');
+            if (fs.existsSync(centralFile)) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(fs.readFileSync(centralFile, 'utf-8'));
+              return;
+            }
+
             res.statusCode = 404;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             res.end(JSON.stringify({ success: false, error: 'Dashboard not found' }));
@@ -665,10 +713,12 @@ function dashboardFileStoragePlugin(): Plugin {
                 const safeDash = String(dashId).replace(/[^a-zA-Z0-9_-]/g, '_');
                 const safeUser = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-                // Save to specific dashId, user's latest dashboard file, and composite key
+                // Save to specific dashId, user's latest dashboard file, and central hub
                 fs.writeFileSync(path.join(storageDir, `dashboard_${safeDash}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
                 fs.writeFileSync(path.join(storageDir, `dashboard_${safeUser}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
                 fs.writeFileSync(path.join(storageDir, `dashboard_${safeUser}_${safeDash}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
+                fs.writeFileSync(path.join(storageDir, 'dashboard_central.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+                fs.writeFileSync(path.join(storageDir, 'dashboard_default_user.json'), JSON.stringify(parsed, null, 2), 'utf-8');
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');

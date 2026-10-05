@@ -713,30 +713,48 @@ export default function App() {
         }
       });
 
-    // On window focus, check if user session or dashboard was updated on another browser/device
-    const handleFocusSync = () => {
+    // Central Multi-Browser Real-Time Sync:
+    // Periodically (every 2.5s) and on window focus/visibility change, check if the central dashboard
+    // was updated from another browser, tab, or computer.
+    let lastRemoteSaveTime = '';
+    const handleCentralSync = () => {
+      if (!isMounted || isPopulatingUserDataRef.current || isSaving) return;
       syncSessionFromServer().then((sessionUser) => {
-        const u = sessionUser || currentTeamUser;
-        if (u?.id && !isPopulatingUserDataRef.current) {
-          loadDashboardFromServerFile(u.id).then((serverDash) => {
-            if (serverDash && serverDash.widgets && serverDash.widgets.length > 0) {
-              if (serverDash.dashboardTitle !== dashboardTitle || serverDash.widgets.length !== widgets.length) {
-                applyDashboardData(serverDash);
-              }
-            }
-          }).catch(() => {});
+        if (!isMounted) return;
+        const u = sessionUser || currentTeamUser || getCurrentUser();
+        if (u && (!currentTeamUser || currentTeamUser.id !== u.id)) {
+          setCurrentTeamUser(u);
         }
+        const targetUserId = u?.id || 'usr-admin-primary';
+        loadDashboardFromServerFile(targetUserId).then((serverDash) => {
+          if (!isMounted || isPopulatingUserDataRef.current || isSaving) return;
+          if (serverDash && serverDash.widgets && serverDash.widgets.length > 0) {
+            const remoteSaveTime = serverDash.lastSavedAt || (serverDash as any).fileSavedAt || '';
+            const isLocalEmpty = !widgets || widgets.length === 0;
+            const hasRemoteUpdates = remoteSaveTime && remoteSaveTime !== lastSavedTime && remoteSaveTime !== lastRemoteSaveTime;
+            const isLayoutDifferent = JSON.stringify(serverDash.widgets) !== JSON.stringify(widgets);
+
+            if (isLocalEmpty || (hasRemoteUpdates && isLayoutDifferent)) {
+              lastRemoteSaveTime = remoteSaveTime;
+              applyDashboardData(serverDash);
+            }
+          }
+        }).catch(() => {});
       }).catch(() => {});
     };
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleFocusSync);
+      window.addEventListener('focus', handleCentralSync);
+      document.addEventListener('visibilitychange', handleCentralSync);
     }
+    const syncInterval = setInterval(handleCentralSync, 2500);
 
     return () => {
       isMounted = false;
+      clearInterval(syncInterval);
       if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleFocusSync);
+        window.removeEventListener('focus', handleCentralSync);
+        document.removeEventListener('visibilitychange', handleCentralSync);
       }
     };
   }, []);
