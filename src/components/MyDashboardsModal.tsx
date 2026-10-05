@@ -115,7 +115,25 @@ export const MyDashboardsModal: React.FC<MyDashboardsModalProps> = ({
   const handleSaveCurrent = async () => {
     if (!currentUser) return;
     const titleToUse = newTitle.trim() || currentDashboardTitle || 'แดชบอร์ดของฉัน (บันทึกใหม่)';
-    const dId = `dash-${currentUser.id}-${Date.now()}`;
+
+    // Check if a saved dashboard with the same name exists
+    const existing = cloudDashboards.find(
+      (d) => (d.dashboardName || '').trim().toLowerCase() === titleToUse.toLowerCase()
+    );
+
+    let dId = `dash-${currentUser.id}-${Date.now()}`;
+    let isOverwriting = false;
+
+    if (existing) {
+      const confirmOverwrite = window.confirm(
+        `พบแดชบอร์ดชื่อ "${titleToUse}" อยู่แล้วในรายการของคุณ!\n\nคุณต้องการบันทึกทับแดชบอร์ดเดิมด้วยข้อมูลปัจจุบันใช่หรือไม่?`
+      );
+      if (!confirmOverwrite) {
+        return;
+      }
+      dId = existing.dashboardId;
+      isOverwriting = true;
+    }
 
     const newDash: DBDashboard = {
       dashboardId: dId,
@@ -135,17 +153,22 @@ export const MyDashboardsModal: React.FC<MyDashboardsModalProps> = ({
         connectionConfig: currentConnectionConfig,
         spacingMode: currentSpacingMode,
       },
-      createdDate: new Date().toISOString(),
+      createdDate: existing ? existing.createdDate : new Date().toISOString(),
       updatedDate: new Date().toISOString(),
     };
 
     try {
       await dbSaveDashboard(newDash);
-      setCloudDashboards((prev) => [newDash, ...prev]);
+      if (isOverwriting) {
+        setCloudDashboards((prev) => prev.map((d) => (d.dashboardId === dId ? newDash : d)));
+        setSaveSuccessMsg(`✓ บันทึกทับแดชบอร์ด "${titleToUse}" สำเร็จเรียบร้อย!`);
+      } else {
+        setCloudDashboards((prev) => [newDash, ...prev]);
+        setSaveSuccessMsg(`✓ บันทึกแดชบอร์ดใหม่ "${titleToUse}" สำเร็จเรียบร้อย!`);
+      }
       if (onSaveCurrentDashboard) {
         onSaveCurrentDashboard(titleToUse, newDesc.trim());
       }
-      setSaveSuccessMsg('บันทึกแดชบอร์ดลง Cloud Database เรียบร้อยแล้ว!');
       setActiveTab('saved');
       setTimeout(() => setSaveSuccessMsg(''), 2500);
     } catch (e: any) {

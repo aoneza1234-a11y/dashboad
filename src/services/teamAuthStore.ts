@@ -6,6 +6,7 @@ import {
   dbResetPassword,
   dbSetCurrentSessionUser,
   dbGetCurrentSessionUser,
+  dbUpdateUserRole,
   DBUser,
   seedInitialDatabase,
   DEFAULT_USERS,
@@ -420,12 +421,13 @@ export function saveTeamUsers(users: TeamUser[]): void {
     }
   }
 
-  // Sync each user to Central Server API & Cloud Database
-  for (const u of users) {
-    fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+  // Atomic single batch update to Central Server API to eliminate race conditions
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'batch-save',
+      users: users.map((u) => ({
         userId: u.id,
         id: u.id,
         name: u.displayName || u.name,
@@ -436,9 +438,9 @@ export function saveTeamUsers(users: TeamUser[]): void {
         department: u.department,
         password: u.password,
         assignedTemplateIds: u.assignedTemplateIds || ['tpl-1'],
-      }),
-    }).catch(() => {});
-  }
+      })),
+    }),
+  }).catch(() => {});
 }
 
 export function toggleUserBlockStatus(userId: string): TeamUser[] {
@@ -454,13 +456,52 @@ export function toggleUserBlockStatus(userId: string): TeamUser[] {
 }
 
 export function updateUserRole(userId: string, newRole: TeamUserRole): TeamUser[] {
+  // 1. Update in-memory user list
   const users = getTeamUsers().map((u) => {
     if (u.id === userId) {
       return { ...u, role: newRole };
     }
     return u;
   });
+  cachedTeamUsers = users;
+
+  // 2. Persist to localStorage immediately
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bi_studio_team_users_v2', JSON.stringify(users));
+      window.dispatchEvent(new CustomEvent('team_users_updated', { detail: users }));
+    } catch (e) {}
+  }
+
+  // 3. If updated user is the currently active session user, update session immediately!
+  const currentSession = getCurrentSessionUser();
+  if (
+    currentSession &&
+    (currentSession.id === userId ||
+      (currentSession.email &&
+        users.find((u) => u.id === userId)?.email?.toLowerCase() === currentSession.email.toLowerCase()))
+  ) {
+    const updatedSession = { ...currentSession, role: newRole };
+    setCurrentSessionUser(updatedSession);
+  }
+
+  // 4. Update IDB and Firestore so future syncs retain this new role
+  dbUpdateUserRole(userId, newRole).catch(() => {});
+
+  // 5. Send atomic update-role request to server API
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'update-role',
+      userId,
+      role: newRole,
+    }),
+  }).catch(() => {});
+
+  // 6. Also batch save full state
   saveTeamUsers(users);
+
   return users;
 }
 

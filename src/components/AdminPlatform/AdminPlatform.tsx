@@ -1761,8 +1761,8 @@ export const AdminPlatform: React.FC<AdminPlatformProps> = ({
                                 value={user.role}
                                 onChange={(e) => {
                                   const newRole = e.target.value as 'admin' | 'editor' | 'viewer';
-                                  updateUserRole(user.id, newRole);
-                                  setTimeout(() => fetchAllTeamUsers().then(setUsers), 100);
+                                  const updated = updateUserRole(user.id, newRole);
+                                  setUsers(updated);
                                 }}
                                 className={`px-2 py-1 rounded-lg text-xs font-bold border cursor-pointer outline-none transition ${
                                   user.role === 'admin'

@@ -73,6 +73,8 @@ import {
 import {
   getDashboardTemplates,
   createDashboardTemplate,
+  findExistingTemplateByTitle,
+  saveOrUpdateDashboardTemplate,
   distributeTemplateToUsers,
   deleteDashboardTemplate,
 } from '../services/templateStore';
@@ -1083,6 +1085,7 @@ export const DeveloperConsole: React.FC<DeveloperConsoleProps> = ({
                               >
                                 <option value="admin">👑 Admin (ระบบหลังบ้าน)</option>
                                 <option value="editor">👥 Editor (ผู้ใช้ในทีม)</option>
+                                <option value="viewer">👁️ Viewer (ผู้ชม)</option>
                               </select>
                             </td>
 
@@ -2019,19 +2022,34 @@ export const DeveloperConsole: React.FC<DeveloperConsoleProps> = ({
                             showToast('กรุณาระบุชื่อเทมเพลต');
                             return;
                           }
+                          const existingTpl = findExistingTemplateByTitle(newTplTitle.trim());
+                          if (existingTpl) {
+                            const shouldOverwrite = window.confirm(
+                              `พบเทมเพลตชื่อ "${newTplTitle.trim()}" อยู่แล้วในระบบ!\n\nคุณต้องการบันทึกทับเทมเพลตเดิมด้วยข้อมูลปัจจุบันใช่หรือไม่?`
+                            );
+                            if (!shouldOverwrite) {
+                              showToast('ยกเลิกการบันทึกทับ คุณสามารถตั้งชื่อใหม่ได้');
+                              return;
+                            }
+                          }
                           const recipients = newTplSelectedUsers.length > 0 ? newTplSelectedUsers : ['all'];
-                          const created = createDashboardTemplate(
+                          const result = saveOrUpdateDashboardTemplate(
                             newTplTitle,
                             newTplDesc,
                             newTplCategory,
                             currentWidgets,
                             recipients,
-                            'Thirawat (Admin)'
+                            'Thirawat (Admin)',
+                            true
                           );
                           setTemplatesList(getDashboardTemplates());
                           setTeamUsers(getTeamUsers());
                           setShowCreateTemplateModal(false);
-                          showToast(`สร้างเทมเพลต "${created.title}" และแจกจ่ายให้ทีมเรียบร้อย!`);
+                          if (result.isOverwritten) {
+                            showToast(`✓ บันทึกทับเทมเพลต "${result.template.title}" และอัปเดตให้ทีมเรียบร้อย!`);
+                          } else {
+                            showToast(`✓ สร้างเทมเพลต "${result.template.title}" และแจกจ่ายให้ทีมเรียบร้อย!`);
+                          }
                         }}
                         className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs transition cursor-pointer shadow-md flex items-center gap-1.5"
                       >

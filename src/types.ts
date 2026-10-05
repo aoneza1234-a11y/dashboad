@@ -36,6 +36,8 @@ export type VisualType =
   | 'shape_pill'
   | 'shape_banner';
 
+export type FilterTargetType = 'value' | 'column' | 'date_preset' | 'date_picker';
+
 export interface VisualFilterRule {
   id: string;
   column: string;
@@ -50,8 +52,22 @@ export interface VisualFilterRule {
     | 'not_blank'
     | 'is_blank'
     | 'starts_with'
-    | 'count_distinct';
+    | 'count_distinct'
+    | 'date_before'
+    | 'date_before_equal'
+    | 'date_after'
+    | 'date_after_equal'
+    | 'date_equal'
+    | 'date_between'
+    | 'date_today'
+    | 'date_this_month'
+    | 'date_this_year'
+    | 'date_last_7_days'
+    | 'date_last_30_days';
   value: string;
+  targetType?: FilterTargetType;
+  compareColumn?: string;
+  secondaryValue?: string;
 }
 
 export interface VisualWidget {
@@ -262,9 +278,26 @@ export interface SalesRecord {
 export interface ActiveFilterRule {
   id: string;
   column: string;
-  operator?: 'equals' | 'not_equals' | 'contains' | 'greater' | 'less' | 'not_blank' | 'is_blank' | 'in';
+  operator?:
+    | 'equals'
+    | 'not_equals'
+    | 'contains'
+    | 'starts_with'
+    | 'greater'
+    | 'greater_equal'
+    | 'less'
+    | 'less_equal'
+    | 'between'
+    | 'not_blank'
+    | 'is_blank'
+    | 'in';
   value?: string;
+  secondValue?: string;
+  compareType?: 'value' | 'column';
+  compareColumn?: string;
   selectedValues?: string[]; // Array of unique values selected from column dropdown
+  isDateRule?: boolean;
+  label?: string;
 }
 
 export interface FilterState {

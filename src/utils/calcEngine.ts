@@ -79,6 +79,84 @@ export function isBlankValue(val: any): boolean {
 }
 
 /**
+ * Parse date values from string, number, or Date object.
+ * Handles Thai Buddhist Era (พ.ศ.), Thai month names, Excel serial numbers, ISO, DMY, YMD.
+ */
+export function parseDateValue(val: any): Date | null {
+  if (val === null || val === undefined) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
+
+  if (typeof val === 'number') {
+    // Excel serial date number (e.g. 45000 = year 2023)
+    if (val > 25000 && val < 80000) {
+      const excelEpoch = new Date(1899, 11, 30);
+      return new Date(excelEpoch.getTime() + val * 86400000);
+    }
+    // Unix epoch
+    if (val > 1000000000000) return new Date(val);
+    if (val > 1000000000) return new Date(val * 1000);
+    return null;
+  }
+
+  const s = String(val).trim();
+  if (!s || s === '-' || s.toLowerCase() === 'null' || s.toLowerCase() === 'undefined') return null;
+
+  // DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (dmyMatch) {
+    let day = parseInt(dmyMatch[1], 10);
+    let month = parseInt(dmyMatch[2], 10) - 1;
+    let year = parseInt(dmyMatch[3], 10);
+    if (year > 2400) year -= 543; // Thai BE to CE
+    const hours = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+    const minutes = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+    const seconds = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (ymdMatch) {
+    let year = parseInt(ymdMatch[1], 10);
+    if (year > 2400) year -= 543; // Thai BE to CE
+    let month = parseInt(ymdMatch[2], 10) - 1;
+    let day = parseInt(ymdMatch[3], 10);
+    const hours = ymdMatch[4] ? parseInt(ymdMatch[4], 10) : 0;
+    const minutes = ymdMatch[5] ? parseInt(ymdMatch[5], 10) : 0;
+    const seconds = ymdMatch[6] ? parseInt(ymdMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Thai Month Names (e.g. 15 ม.ค. 2567, 1 มีนาคม 2026)
+  const thaiMonths: Record<string, number> = {
+    'ม.ค.': 0, 'มกราคม': 0, 'ก.พ.': 1, 'กุมภาพันธ์': 1, 'มี.ค.': 2, 'มีนาคม': 2,
+    'เม.ย.': 3, 'เมษายน': 3, 'พ.ค.': 4, 'พฤษภาคม': 4, 'มิ.ย.': 5, 'มิถุนายน': 5,
+    'ก.ค.': 6, 'กรกฎาคม': 6, 'ส.ค.': 7, 'สิงหาคม': 7, 'ก.ย.': 8, 'กันยายน': 8,
+    'ต.ค.': 9, 'ตุลาคม': 9, 'พ.ย.': 10, 'พฤศจิกายน': 10, 'ธ.ค.': 11, 'ธันวาคม': 11,
+  };
+  for (const [thName, mIdx] of Object.entries(thaiMonths)) {
+    if (s.includes(thName)) {
+      const parts = s.replace(thName, ` ${mIdx + 1} `).trim().split(/\s+/);
+      if (parts.length >= 3) {
+        let day = parseInt(parts[0], 10);
+        let year = parseInt(parts[2], 10);
+        if (year > 2400) year -= 543;
+        const d = new Date(year, mIdx, day);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+  }
+
+  // Fallback native Date.parse
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
+/**
  * Filter records based on widget rules and global skipBlanks
  */
 export function applyRecordFilters(
@@ -106,21 +184,124 @@ export function applyRecordFilters(
           if (rule.operator === 'is_blank') return isBlankValue(val);
           if (rule.operator === 'not_blank') return !isBlankValue(val);
 
-          if (rule.value === undefined || rule.value === null || String(rule.value).trim() === '') {
+          // Date preset operators (today, this_month, this_year, last_7_days, last_30_days)
+          const now = new Date();
+          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+          if (rule.operator === 'date_today') {
+            const d = parseDateValue(val);
+            if (!d) return false;
+            return d >= todayStart && d <= todayEnd;
+          }
+
+          if (rule.operator === 'date_this_month') {
+            const d = parseDateValue(val);
+            if (!d) return false;
+            return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+          }
+
+          if (rule.operator === 'date_this_year') {
+            const d = parseDateValue(val);
+            if (!d) return false;
+            return d.getFullYear() === now.getFullYear();
+          }
+
+          if (rule.operator === 'date_last_7_days') {
+            const d = parseDateValue(val);
+            if (!d) return false;
+            const past7 = new Date(todayStart.getTime() - 7 * 86400000);
+            return d >= past7 && d <= todayEnd;
+          }
+
+          if (rule.operator === 'date_last_30_days') {
+            const d = parseDateValue(val);
+            if (!d) return false;
+            const past30 = new Date(todayStart.getTime() - 30 * 86400000);
+            return d >= past30 && d <= todayEnd;
+          }
+
+          // Determine target comparison value:
+          // If comparing with another column, dynamically fetch that column's value from the current record!
+          let targetRawVal: any = rule.value;
+          if (rule.targetType === 'column' && rule.compareColumn) {
+            targetRawVal = getRecordValue(r, rule.compareColumn);
+          }
+
+          // If target is empty and not comparing column, pass through
+          if (
+            rule.targetType !== 'column' &&
+            (targetRawVal === undefined || targetRawVal === null || String(targetRawVal).trim() === '')
+          ) {
             return true;
           }
 
+          // 1. Check Date Comparison (both val and target are dates, or operator is date-specific)
+          const dateA = parseDateValue(val);
+          const dateTarget = parseDateValue(targetRawVal);
+          const isDateComparison = (dateA !== null && dateTarget !== null) || rule.operator.startsWith('date_');
+
+          if (isDateComparison) {
+            if (!dateA) return false;
+
+            // Handle date_between
+            if (rule.operator === 'date_between') {
+              const start = dateTarget;
+              const end = parseDateValue(rule.secondaryValue);
+              if (!start) return false;
+              if (end) {
+                const endOfDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+                return dateA >= start && dateA <= endOfDay;
+              }
+              return dateA >= start;
+            }
+
+            if (!dateTarget) return false;
+
+            // Normalize to date level for exact day comparisons
+            const timeA = dateA.getTime();
+            const timeTarget = dateTarget.getTime();
+            const isSameDay =
+              dateA.getFullYear() === dateTarget.getFullYear() &&
+              dateA.getMonth() === dateTarget.getMonth() &&
+              dateA.getDate() === dateTarget.getDate();
+
+            switch (rule.operator) {
+              case 'equals':
+              case 'date_equal':
+                return isSameDay;
+              case 'not_equals':
+                return !isSameDay;
+              case 'greater':
+              case 'date_after':
+                return timeA > timeTarget;
+              case 'greater_equal':
+              case 'date_after_equal':
+                return timeA >= timeTarget || isSameDay;
+              case 'less':
+              case 'date_before':
+                return timeA < timeTarget;
+              case 'less_equal':
+              case 'date_before_equal':
+                return timeA <= timeTarget || isSameDay;
+              default:
+                break;
+            }
+          }
+
+          // 2. Numeric / String comparison
           const strVal = String(val ?? '').trim().toLowerCase();
-          const strTarget = String(rule.value).trim().toLowerCase();
+          const strTarget = String(targetRawVal ?? '').trim().toLowerCase();
           const isStrictNumber =
             (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.trim())))) &&
-            !isNaN(Number(String(rule.value).trim()));
+            (typeof targetRawVal === 'number' || (typeof targetRawVal === 'string' && targetRawVal.trim() !== '' && !isNaN(Number(targetRawVal.trim()))));
           const numVal = isStrictNumber ? parseCleanNumber(val) : NaN;
-          const numTarget = isStrictNumber ? parseCleanNumber(rule.value) : NaN;
+          const numTarget = isStrictNumber ? parseCleanNumber(targetRawVal) : NaN;
           const isNumericComparison = isStrictNumber && !isNaN(numVal) && !isNaN(numTarget);
 
           switch (rule.operator) {
             case 'equals':
+            case 'date_equal':
               return strVal === strTarget || (isNumericComparison && numVal === numTarget);
             case 'not_equals':
               return strVal !== strTarget && (!isNumericComparison || numVal !== numTarget);
@@ -129,12 +310,16 @@ export function applyRecordFilters(
             case 'starts_with':
               return strVal.startsWith(strTarget);
             case 'greater':
+            case 'date_after':
               return isNumericComparison ? numVal > numTarget : strVal > strTarget;
             case 'greater_equal':
+            case 'date_after_equal':
               return isNumericComparison ? numVal >= numTarget : strVal >= strTarget;
             case 'less':
+            case 'date_before':
               return isNumericComparison ? numVal < numTarget : strVal < strTarget;
             case 'less_equal':
+            case 'date_before_equal':
               return isNumericComparison ? numVal <= numTarget : strVal <= strTarget;
             default:
               return strVal === strTarget;
@@ -329,22 +514,99 @@ export function applyGlobalFilters(
           return true;
         }
 
-        if (rule.value === undefined || rule.value === null || String(rule.value).trim() === '') return true;
+        // Determine comparison target: Either another column or a fixed value
+        let targetRawVal: any = rule.value;
+        const isColumnComparison =
+          (rule.compareType === 'column' || rule.targetType === 'column') &&
+          Boolean(rule.compareColumn || rule.targetColumn);
 
+        if (isColumnComparison) {
+          const colName = rule.compareColumn || rule.targetColumn;
+          targetRawVal = getRecordValue(r, colName);
+        }
+
+        // If target is empty and not comparing against a column, ignore rule
+        if (
+          !isColumnComparison &&
+          (targetRawVal === undefined || targetRawVal === null || String(targetRawVal).trim() === '')
+        ) {
+          return true;
+        }
+
+        // 1. Date comparison check
+        const dateA = parseDateValue(val);
+        const dateTarget = parseDateValue(targetRawVal);
+        const isDateComparison =
+          rule.isDateRule ||
+          (dateA !== null && dateTarget !== null) ||
+          (rule.operator && String(rule.operator).startsWith('date_'));
+
+        if (isDateComparison && dateA) {
+          const timeA = dateA.getTime();
+
+          if (rule.operator === 'between' || rule.operator === 'date_between') {
+            const dateEnd = parseDateValue(rule.secondValue || rule.secondaryValue);
+            if (!dateTarget) return true;
+            if (dateEnd) {
+              const endOfDay = new Date(
+                dateEnd.getFullYear(),
+                dateEnd.getMonth(),
+                dateEnd.getDate(),
+                23,
+                59,
+                59,
+                999
+              ).getTime();
+              return timeA >= dateTarget.getTime() && timeA <= endOfDay;
+            }
+            return timeA >= dateTarget.getTime();
+          }
+
+          if (dateTarget) {
+            const timeTarget = dateTarget.getTime();
+            const isSameDay =
+              dateA.getFullYear() === dateTarget.getFullYear() &&
+              dateA.getMonth() === dateTarget.getMonth() &&
+              dateA.getDate() === dateTarget.getDate();
+
+            switch (rule.operator) {
+              case 'equals':
+              case 'date_equal':
+                return isSameDay;
+              case 'not_equals':
+                return !isSameDay;
+              case 'greater':
+              case 'date_after':
+                return timeA > timeTarget;
+              case 'greater_equal':
+                return timeA >= timeTarget || isSameDay;
+              case 'less':
+              case 'date_before':
+                return timeA < timeTarget;
+              case 'less_equal':
+                return timeA <= timeTarget || isSameDay;
+              default:
+                return isSameDay;
+            }
+          }
+        }
+
+        // 2. Numeric and Text Comparisons
         const strVal = String(val ?? '').trim().toLowerCase();
-        const strTarget = String(rule.value).trim().toLowerCase();
+        const strTarget = String(targetRawVal ?? '').trim().toLowerCase();
         const isStrictNumber =
           (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.trim())))) &&
-          !isNaN(Number(String(rule.value).trim()));
+          (typeof targetRawVal === 'number' ||
+            (typeof targetRawVal === 'string' && targetRawVal.trim() !== '' && !isNaN(Number(targetRawVal.trim()))));
         const numVal = isStrictNumber ? parseCleanNumber(val) : NaN;
-        const numTarget = isStrictNumber ? parseCleanNumber(rule.value) : NaN;
+        const numTarget = isStrictNumber ? parseCleanNumber(targetRawVal) : NaN;
         const isNumericComparison = isStrictNumber && !isNaN(numVal) && !isNaN(numTarget);
 
         switch (rule.operator) {
           case 'equals':
-            return strVal === strTarget || (isNumericComparison && numVal === numTarget);
+            return isNumericComparison ? numVal === numTarget : strVal === strTarget;
           case 'not_equals':
-            return strVal !== strTarget && (!isNumericComparison || numVal !== numTarget);
+            return isNumericComparison ? numVal !== numTarget : strVal !== strTarget;
           case 'contains':
             return strVal.includes(strTarget);
           case 'starts_with':
@@ -357,6 +619,14 @@ export function applyGlobalFilters(
             return isNumericComparison ? numVal < numTarget : strVal < strTarget;
           case 'less_equal':
             return isNumericComparison ? numVal <= numTarget : strVal <= strTarget;
+          case 'between': {
+            const secondRaw = rule.secondValue ?? rule.secondaryValue;
+            if (isNumericComparison && secondRaw !== undefined) {
+              const numSecond = parseCleanNumber(secondRaw);
+              return numVal >= numTarget && numVal <= numSecond;
+            }
+            return true;
+          }
           default:
             return strVal === strTarget;
         }

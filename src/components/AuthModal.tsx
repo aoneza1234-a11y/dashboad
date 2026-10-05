@@ -348,39 +348,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </>
               )}
             </button>
-
-            {/* Quick Demo Credentials - Strictly displayed only in /test route, NEVER in production user website */}
-            {effectiveIsTestMode && (
-              <div className="pt-3 border-t border-[#29204c] animate-in fade-in">
-                <div className="flex items-center gap-1.5 text-[10px] text-amber-300 font-semibold mb-1.5">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  <span>เฉพาะในโหมดทดสอบ (/test) - บัญชีทดสอบ Persona:</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('aoneza953@gmail.com', 'password123')}
-                    className="px-2 py-1 rounded bg-[#251f46] hover:bg-violet-600 text-[10px] text-violet-200 transition cursor-pointer"
-                  >
-                    👑 Thirawat (Admin)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('komsan.m@team.internal', 'password123')}
-                    className="px-2 py-1 rounded bg-[#251f46] hover:bg-violet-600 text-[10px] text-violet-200 transition cursor-pointer"
-                  >
-                    👤 User A (Komsan)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('nattapong.s@team.internal', 'password123')}
-                    className="px-2 py-1 rounded bg-[#251f46] hover:bg-violet-600 text-[10px] text-violet-200 transition cursor-pointer"
-                  >
-                    👤 User B (Nattapong)
-                  </button>
-                </div>
-              </div>
-            )}
           </form>
         )}
 

@@ -142,18 +142,53 @@ export function saveDashboardTemplates(templates: DashboardTemplate[]): void {
   }
 }
 
-export function createDashboardTemplate(
+export function findExistingTemplateByTitle(title: string): DashboardTemplate | undefined {
+  if (!title || typeof title !== 'string') return undefined;
+  const clean = title.trim().toLowerCase();
+  const templates = getDashboardTemplates();
+  return templates.find((t) => (t.title || t.name || '').trim().toLowerCase() === clean);
+}
+
+export function saveOrUpdateDashboardTemplate(
   title: string,
   description: string,
   category: string,
   widgets: VisualWidget[],
   assignedToUserIds: string[],
-  createdBy: string = 'ผู้ดูแลระบบ'
-): DashboardTemplate {
+  createdBy: string = 'ผู้ดูแลระบบ',
+  forceOverwrite: boolean = false
+): { template: DashboardTemplate; isOverwritten: boolean } {
   const templates = getDashboardTemplates();
+  const cleanTitle = title.trim() || 'แดชบอร์ดแม่แบบใหม่';
+  const existing = findExistingTemplateByTitle(cleanTitle);
+
+  if (existing && forceOverwrite) {
+    // Overwrite the existing template with new layout, widgets, and info
+    const updatedTemplate: DashboardTemplate = {
+      ...existing,
+      title: cleanTitle,
+      description: description.trim() || existing.description,
+      category: category.trim() || existing.category,
+      widgets: JSON.parse(JSON.stringify(widgets)),
+      sampleDataCount: widgets.length * 15,
+      createdAt: new Date().toISOString().split('T')[0],
+      assignedToUserIds: Array.from(new Set([...(existing.assignedToUserIds || []), ...assignedToUserIds])),
+    };
+
+    const updatedList = templates.map((t) => (t.id === existing.id ? updatedTemplate : t));
+    saveDashboardTemplates(updatedList);
+
+    if (assignedToUserIds.length > 0) {
+      assignTemplatesToUsers(updatedTemplate.id, assignedToUserIds);
+    }
+
+    return { template: updatedTemplate, isOverwritten: true };
+  }
+
+  // Create brand new template
   const newTemplate: DashboardTemplate = {
     id: `tpl-${Date.now()}`,
-    title: title.trim() || 'แดชบอร์ดแม่แบบใหม่',
+    title: cleanTitle,
     description: description.trim() || 'แม่แบบแดชบอร์ดสร้างจากระบบหลังบ้านเพื่อส่งให้ทีมงานใช้งาน',
     category: category.trim() || 'องค์กรทั่วไป',
     thumbnailIcon: 'LayoutDashboard',
@@ -167,12 +202,32 @@ export function createDashboardTemplate(
   const updated = [newTemplate, ...templates];
   saveDashboardTemplates(updated);
 
-  // Distribute to users
   if (assignedToUserIds.length > 0) {
     assignTemplatesToUsers(newTemplate.id, assignedToUserIds);
   }
 
-  return newTemplate;
+  return { template: newTemplate, isOverwritten: false };
+}
+
+export function createDashboardTemplate(
+  title: string,
+  description: string,
+  category: string,
+  widgets: VisualWidget[],
+  assignedToUserIds: string[],
+  createdBy: string = 'ผู้ดูแลระบบ',
+  forceOverwrite: boolean = false
+): DashboardTemplate {
+  const result = saveOrUpdateDashboardTemplate(
+    title,
+    description,
+    category,
+    widgets,
+    assignedToUserIds,
+    createdBy,
+    forceOverwrite
+  );
+  return result.template;
 }
 
 export function distributeTemplateToUsers(templateId: string, userIds: string[]): DashboardTemplate[] {

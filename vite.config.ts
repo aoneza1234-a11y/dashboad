@@ -261,6 +261,51 @@ function dashboardFileStoragePlugin(): Plugin {
                   return;
                 }
 
+                // Update Role specifically (instant atomic update with zero race condition)
+                if (action === 'update-role') {
+                  const targetUserId = parsed.userId || parsed.id;
+                  const newRole = parsed.role;
+                  const userIndex = users.findIndex(
+                    (u: any) =>
+                      (targetUserId && (u.userId === targetUserId || u.id === targetUserId)) ||
+                      (parsed.email && (u.email || '').toLowerCase() === parsed.email.toLowerCase())
+                  );
+                  if (userIndex >= 0) {
+                    users[userIndex].role = newRole;
+                    users[userIndex].updatedAt = new Date().toISOString();
+                    fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                    res.end(JSON.stringify({ success: true, user: users[userIndex] }));
+                    return;
+                  }
+                  res.statusCode = 404;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: false, error: 'User not found' }));
+                  return;
+                }
+
+                // Batch Save Users (Atomic write of whole team with no race conditions)
+                if (action === 'batch-save' && Array.isArray(parsed.users)) {
+                  const byId = new Map<string, any>();
+                  for (const u of users) {
+                    byId.set(u.userId || u.id, u);
+                  }
+                  for (const incoming of parsed.users) {
+                    const key = incoming.userId || incoming.id;
+                    if (key) {
+                      const prev = byId.get(key) || {};
+                      byId.set(key, { ...prev, ...incoming, userId: key, updatedAt: new Date().toISOString() });
+                    }
+                  }
+                  users = Array.from(byId.values());
+                  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: true, count: users.length }));
+                  return;
+                }
+
                 // Register or Update User
                 const email = (parsed.email || '').trim().toLowerCase();
                 const targetUserId = parsed.userId || parsed.id;
@@ -606,9 +651,10 @@ function dashboardFileStoragePlugin(): Plugin {
                 const safeDash = String(dashId).replace(/[^a-zA-Z0-9_-]/g, '_');
                 const safeUser = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-                // Save to both specific dashId and user's latest dashboard file
+                // Save to specific dashId, user's latest dashboard file, and composite key
                 fs.writeFileSync(path.join(storageDir, `dashboard_${safeDash}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
                 fs.writeFileSync(path.join(storageDir, `dashboard_${safeUser}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
+                fs.writeFileSync(path.join(storageDir, `dashboard_${safeUser}_${safeDash}.json`), JSON.stringify(parsed, null, 2), 'utf-8');
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');

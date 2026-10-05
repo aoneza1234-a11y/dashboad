@@ -556,6 +556,32 @@ export async function dbResetPassword(
   }
 }
 
+// Update User Role in IDB and Firestore
+export async function dbUpdateUserRole(
+  userId: string,
+  newRole: 'admin' | 'editor' | 'viewer'
+): Promise<boolean> {
+  try {
+    const allUsers = await idbGetAll<DBUser>('users');
+    const found = allUsers.find((u) => u.userId === userId || (u as any).id === userId);
+    if (found) {
+      const updated: DBUser = { ...found, role: newRole };
+      await idbPut('users', updated);
+    }
+    if (isFirestoreAvailable && db) {
+      try {
+        await setDoc(doc(db, 'users', userId), sanitizeForFirestore({ role: newRole }), { merge: true });
+      } catch (e) {
+        disableFirestoreIfMissing(e);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn('dbUpdateUserRole warning:', err);
+    return false;
+  }
+}
+
 // Get all users (Server API First -> IDB -> LocalStorage -> Default)
 export async function dbGetAllUsers(): Promise<DBUser[]> {
   try {

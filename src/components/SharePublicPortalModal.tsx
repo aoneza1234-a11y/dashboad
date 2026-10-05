@@ -31,7 +31,7 @@ interface SharePublicPortalModalProps {
   onPreviewViewer?: () => void;
   currentUser?: TeamUser | null;
   dashboardId?: string;
-  onSaveBeforeShare?: () => void;
+  onSaveBeforeShare?: () => Promise<any> | void;
 }
 
 export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
@@ -45,6 +45,7 @@ export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
 }) => {
   const [siteStatus, setSiteStatus] = useState<SiteStatus>(getSiteStatus());
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSyncingShare, setIsSyncingShare] = useState(false);
   const [editingMessage, setEditingMessage] = useState(false);
   const [mTitle, setMTitle] = useState(siteStatus.maintenanceTitle);
   const [mMessage, setMMessage] = useState(siteStatus.maintenanceMessage);
@@ -55,6 +56,10 @@ export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
       setSiteStatus(current);
       setMTitle(current.maintenanceTitle);
       setMMessage(current.maintenanceMessage);
+
+      if (onSaveBeforeShare) {
+        Promise.resolve(onSaveBeforeShare()).catch(() => {});
+      }
 
       // Listen to real-time status across browsers
       const unsub = startSiteStatusSync((updated) => {
@@ -74,10 +79,15 @@ export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
         }${dashboardId ? `&dash=${encodeURIComponent(dashboardId)}` : ''}`
       : '';
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!publicUrl) return;
-    if (onSaveBeforeShare) {
-      onSaveBeforeShare();
+    setIsSyncingShare(true);
+    try {
+      if (onSaveBeforeShare) {
+        await onSaveBeforeShare();
+      }
+    } catch {} finally {
+      setIsSyncingShare(false);
     }
     navigator.clipboard.writeText(publicUrl);
     setCopiedLink(true);
@@ -306,11 +316,19 @@ export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                if (onSaveBeforeShare) onSaveBeforeShare();
+              disabled={isSyncingShare}
+              onClick={async () => {
+                if (onSaveBeforeShare) {
+                  setIsSyncingShare(true);
+                  try {
+                    await onSaveBeforeShare();
+                  } catch {} finally {
+                    setIsSyncingShare(false);
+                  }
+                }
                 window.open(publicUrl, '_blank');
               }}
-              className="px-3.5 py-2 rounded-xl border border-violet-500/40 hover:bg-white/10 text-violet-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+              className="px-3.5 py-2 rounded-xl border border-violet-500/40 hover:bg-white/10 text-violet-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>เปิดทดสอบในแท็บใหม่</span>
@@ -319,12 +337,20 @@ export const SharePublicPortalModal: React.FC<SharePublicPortalModalProps> = ({
             {onPreviewViewer && (
               <button
                 type="button"
-                onClick={() => {
-                  if (onSaveBeforeShare) onSaveBeforeShare();
+                disabled={isSyncingShare}
+                onClick={async () => {
+                  if (onSaveBeforeShare) {
+                    setIsSyncingShare(true);
+                    try {
+                      await onSaveBeforeShare();
+                    } catch {} finally {
+                      setIsSyncingShare(false);
+                    }
+                  }
                   onClose();
                   onPreviewViewer();
                 }}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-md"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-md disabled:opacity-50"
               >
                 <Eye className="w-3.5 h-3.5" />
                 <span>ดูตัวอย่างมุมมองผู้ชม</span>

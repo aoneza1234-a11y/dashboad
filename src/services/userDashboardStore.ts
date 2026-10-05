@@ -39,53 +39,69 @@ export interface UserDashboardData {
 const STORAGE_PREFIX = 'user_dashboard_';
 const SALES_PREFIX = 'user_sales_data_';
 
-export function getUserDashboardKey(userId?: string | null): string {
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+export function safeCleanUserId(userId?: any): string | null {
+  if (!userId) return null;
+  if (typeof userId === 'string') {
+    const trimmed = userId.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof userId === 'object') {
+    const candidate = userId.id || userId.userId || userId.user_id || userId.email;
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  }
+  return null;
+}
+
+export function getUserDashboardKey(userId?: any): string {
+  const cleanId = safeCleanUserId(userId);
+  if (!cleanId) {
     return `${STORAGE_PREFIX}default_user`;
   }
-  const safeId = encodeURIComponent(userId.trim().toLowerCase() || 'default_user');
+  const safeId = encodeURIComponent(cleanId.toLowerCase());
   return `${STORAGE_PREFIX}${safeId}`;
 }
 
-export function getUserSalesDataKey(userId?: string | null): string {
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+export function getUserSalesDataKey(userId?: any): string {
+  const cleanId = safeCleanUserId(userId);
+  if (!cleanId) {
     return `${SALES_PREFIX}default_user`;
   }
-  const safeId = encodeURIComponent(userId.trim().toLowerCase() || 'default_user');
+  const safeId = encodeURIComponent(cleanId.toLowerCase());
   return `${SALES_PREFIX}${safeId}`;
 }
 
 // Synchronous fast-read for instant boot (<5ms)
-export function loadUserDashboard(userId?: string | null): UserDashboardData | null {
+export function loadUserDashboard(userId?: any): UserDashboardData | null {
   if (typeof window === 'undefined') return null;
-  if (!userId || typeof userId !== 'string' || !userId.trim()) return null;
-  const cleanId = userId.trim();
+  const cleanId = safeCleanUserId(userId);
+  if (!cleanId) return null;
 
   try {
     const key = getUserDashboardKey(cleanId);
-    let raw = localStorage.getItem(key);
-    if (!raw) {
-      raw = localStorage.getItem(`user_dashboard_${cleanId}`);
-    }
-    if (!raw) {
-      raw = localStorage.getItem(`user_dashboard_${cleanId.toLowerCase()}`);
-    }
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(key);
+      if (!raw) raw = localStorage.getItem(`user_dashboard_${cleanId}`);
+      if (!raw) raw = localStorage.getItem(`user_dashboard_${cleanId.toLowerCase()}`);
+    } catch {}
 
     // Retrieve user-specific isolated sales data
     const salesKey = getUserSalesDataKey(cleanId);
-    let rawSales = localStorage.getItem(salesKey);
-    if (!rawSales) {
-      rawSales = localStorage.getItem(`user_sales_data_${cleanId}`);
-    }
-    if (!rawSales) {
-      rawSales = localStorage.getItem(`user_sales_data_${cleanId.toLowerCase()}`);
-    }
+    let rawSales: string | null = null;
+    try {
+      rawSales = localStorage.getItem(salesKey);
+      if (!rawSales) rawSales = localStorage.getItem(`user_sales_data_${cleanId}`);
+      if (!rawSales) rawSales = localStorage.getItem(`user_sales_data_${cleanId.toLowerCase()}`);
+    } catch {}
 
     let parsed: any = null;
     if (raw) {
       try {
         parsed = JSON.parse(raw);
-      } catch (e) {}
+      } catch {}
     }
 
     let sales: SalesRecord[] = [];
@@ -95,7 +111,7 @@ export function loadUserDashboard(userId?: string | null): UserDashboardData | n
         if (Array.isArray(parsedSales) && parsedSales.length > 0) {
           sales = parsedSales;
         }
-      } catch (e) {}
+      } catch {}
     }
 
     if (parsed && (!sales || sales.length === 0) && Array.isArray(parsed.salesData) && parsed.salesData.length > 0) {
@@ -115,7 +131,7 @@ export function loadUserDashboard(userId?: string | null): UserDashboardData | n
 
     return null;
   } catch (e) {
-    console.error('Failed to load user dashboard from fast cache', e);
+    console.warn('Fast cache load notice', e);
     return null;
   }
 }
@@ -191,9 +207,9 @@ export async function refreshUserLiveData(
 }
 
 // Asynchronous Cloud Database & Server File loader with single source of truth across all devices
-export async function loadUserDashboardFromCloud(userId?: string | null): Promise<UserDashboardData | null> {
-  if (!userId || typeof userId !== 'string' || !userId.trim()) return null;
-  const cleanId = userId.trim();
+export async function loadUserDashboardFromCloud(userId?: any): Promise<UserDashboardData | null> {
+  const cleanId = safeCleanUserId(userId);
+  if (!cleanId) return null;
 
   // 1. Query Server File Storage API first (Authoritative source across all computers and browsers!)
   try {
@@ -336,14 +352,14 @@ export async function loadDashboardByShareParams(userId?: string | null, dashId?
 // Saves this active dashboard as user's latest work ("ผลงานล่าสุด"), overwriting latest active draft when saved again.
 // Saved templates and presets remain untouched and safe!
 export async function saveUserDashboardAsync(
-  userId?: string | null,
+  userId?: any,
   data?: Omit<UserDashboardData, 'lastSavedAt'> | null,
   dashboardId?: string
 ): Promise<{ success: boolean; lastSavedAt: string; fileName?: string; error?: string }> {
-  if (!userId || typeof userId !== 'string' || !userId.trim() || !data) {
+  const cleanId = safeCleanUserId(userId);
+  if (!cleanId || !data) {
     return { success: false, lastSavedAt: '', error: 'Missing userId or data' };
   }
-  const cleanId = userId.trim();
   const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const dId = dashboardId || data.dashboardId || `dash-${cleanId}-${(data.dashboardTitle || 'dash').replace(/\s+/g, '_')}`;
 

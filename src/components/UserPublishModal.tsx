@@ -25,7 +25,7 @@ interface UserPublishModalProps {
   onPreviewViewer: () => void;
   currentUser?: TeamUser | null;
   dashboardId?: string;
-  onSaveBeforeShare?: () => void;
+  onSaveBeforeShare?: () => Promise<any> | void;
 }
 
 export const UserPublishModal: React.FC<UserPublishModalProps> = ({
@@ -39,12 +39,20 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [isSyncingShare, setIsSyncingShare] = useState(false);
   const [activeTab, setActiveTab] = useState<'link' | 'embed' | 'settings'>('link');
 
   // Load viewer settings
   const [viewerConfig, setViewerConfig] = useState<ViewerShareConfig>(() => {
     return getSiteStatus().viewerConfig;
   });
+
+  // Automatically save current dashboard state to cloud on modal open so the share link is always up-to-date
+  React.useEffect(() => {
+    if (isOpen && onSaveBeforeShare) {
+      Promise.resolve(onSaveBeforeShare()).catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -57,16 +65,27 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
 
   const embedCode = `<iframe\n  src="${viewerUrl}"\n  width="100%"\n  height="800px"\n  frameborder="0"\n  allowfullscreen\n></iframe>`;
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     if (!viewerUrl) return;
-    if (onSaveBeforeShare) onSaveBeforeShare();
+    setIsSyncingShare(true);
+    try {
+      if (onSaveBeforeShare) await onSaveBeforeShare();
+    } catch {} finally {
+      setIsSyncingShare(false);
+    }
     navigator.clipboard.writeText(viewerUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handleCopyEmbed = () => {
-    if (onSaveBeforeShare) onSaveBeforeShare();
+  const handleCopyEmbed = async () => {
+    if (!viewerUrl) return;
+    setIsSyncingShare(true);
+    try {
+      if (onSaveBeforeShare) await onSaveBeforeShare();
+    } catch {} finally {
+      setIsSyncingShare(false);
+    }
     navigator.clipboard.writeText(embedCode);
     setCopiedEmbed(true);
     setTimeout(() => setCopiedEmbed(false), 2500);
@@ -335,13 +354,21 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
         {/* Modal Footer */}
         <div className="p-4 bg-[#120e24] border-t border-white/10 flex items-center justify-between">
           <button
-            onClick={() => {
-              if (onSaveBeforeShare) onSaveBeforeShare();
+            disabled={isSyncingShare}
+            onClick={async () => {
+              if (onSaveBeforeShare) {
+                setIsSyncingShare(true);
+                try {
+                  await onSaveBeforeShare();
+                } catch {} finally {
+                  setIsSyncingShare(false);
+                }
+              }
               if (viewerUrl) {
                 window.open(viewerUrl, '_blank');
               }
             }}
-            className="px-3.5 py-2 rounded-xl border border-violet-500/30 hover:bg-white/10 text-violet-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+            className="px-3.5 py-2 rounded-xl border border-violet-500/30 hover:bg-white/10 text-violet-300 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>เปิดทดสอบในแท็บใหม่</span>
@@ -349,12 +376,20 @@ export const UserPublishModal: React.FC<UserPublishModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                if (onSaveBeforeShare) onSaveBeforeShare();
+              disabled={isSyncingShare}
+              onClick={async () => {
+                if (onSaveBeforeShare) {
+                  setIsSyncingShare(true);
+                  try {
+                    await onSaveBeforeShare();
+                  } catch {} finally {
+                    setIsSyncingShare(false);
+                  }
+                }
                 onClose();
                 onPreviewViewer();
               }}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-lg cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-lg cursor-pointer disabled:opacity-50"
             >
               <Eye className="w-4 h-4" />
               <span>สลับไปดูมุมมองผู้ชมทันที</span>

@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Filter,
   X,
   Plus,
   ChevronDown,
@@ -8,14 +7,16 @@ import {
   Check,
   RotateCcw,
   Sparkles,
-  Layers,
-  CheckSquare,
-  Square,
   ListFilter,
+  SlidersHorizontal,
+  Calendar,
+  Layers,
+  ArrowRightLeft,
+  CheckCircle2,
 } from 'lucide-react';
 import { FilterState, SalesRecord, ActiveFilterRule } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
-import { getRecordValue, isBlankValue } from '../utils/calcEngine';
+import { getRecordValue, isBlankValue, parseDateValue, parseCleanNumber } from '../utils/calcEngine';
 
 interface InlineFilterBarProps {
   filterState: FilterState;
@@ -37,6 +38,17 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
   const isDark = themeStyles?.isDark ?? true;
   const [activeDropdownRuleId, setActiveDropdownRuleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<Record<string, string>>({});
+  const [isConditionModalOpen, setIsConditionModalOpen] = useState(false);
+
+  // Advanced Condition Creator State
+  const [condSourceCol, setCondSourceCol] = useState<string>('date');
+  const [condOperator, setCondOperator] = useState<string>('less_equal');
+  const [condCompareType, setCondCompareType] = useState<'column' | 'value'>('column');
+  const [condCompareCol, setCondCompareCol] = useState<string>('date');
+  const [condValue, setCondValue] = useState<string>('');
+  const [condSecondValue, setCondSecondValue] = useState<string>('');
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Thai column names mapping
@@ -69,11 +81,173 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Compute distinct values and counts for each column with support for cascading other rules
+  // Dynamically extract all unique columns present in the dataset and availableColumns
+  const dynamicColumns = useMemo(() => {
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    const addCol = (c: string) => {
+      if (!c || c === 'id' || c.startsWith('__')) return;
+      const clean = c.trim();
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        list.push(clean);
+      }
+    };
+
+    if (salesData && salesData.length > 0) {
+      salesData.forEach((row) => {
+        if (row && typeof row === 'object') {
+          Object.keys(row).forEach(addCol);
+        }
+      });
+    }
+
+    if (availableColumns && availableColumns.length > 0) {
+      availableColumns.forEach(addCol);
+    }
+
+    if (list.length === 0) {
+      ['date', 'region', 'category', 'product', 'channel', 'revenue', 'cost', 'profit', 'quantity'].forEach(addCol);
+    }
+
+    return list;
+  }, [salesData, availableColumns]);
+
+  // Set default column candidates when dynamicColumns loads
+  useEffect(() => {
+    if (dynamicColumns.length > 0) {
+      if (!dynamicColumns.includes(condSourceCol)) {
+        setCondSourceCol(dynamicColumns[0]);
+      }
+      if (!dynamicColumns.includes(condCompareCol)) {
+        setCondCompareCol(dynamicColumns[1] || dynamicColumns[0]);
+      }
+    }
+  }, [dynamicColumns]);
+
+  // Compute baseline distinct values and counts for each column
+  const columnDistinctValues = useMemo(() => {
+    const map: Record<string, { value: string; count: number }[]> = {};
+    if (!salesData || salesData.length === 0) return map;
+
+    dynamicColumns.forEach((col) => {
+      const counts: Record<string, number> = {};
+      salesData.forEach((row) => {
+        const val = getRecordValue(row, col);
+        if (val !== undefined && val !== null && !isBlankValue(val)) {
+          const strVal = String(val).trim();
+          counts[strVal] = (counts[strVal] || 0) + 1;
+        }
+      });
+
+      const list = Object.entries(counts).map(([value, count]) => ({ value, count }));
+      list.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+      map[col] = list;
+    });
+
+    return map;
+  }, [salesData, dynamicColumns]);
+
+  // Calculate live matching count for condition builder
+  const liveConditionMatches = useMemo(() => {
+    if (!salesData || salesData.length === 0) return { count: 0, total: 0, pct: 0 };
+    const total = salesData.length;
+
+    let matched = 0;
+    salesData.forEach((r) => {
+      const val = getRecordValue(r, condSourceCol);
+      let targetRawVal: any = condValue;
+      if (condCompareType === 'column') {
+        targetRawVal = getRecordValue(r, condCompareCol);
+      }
+
+      if (condCompareType !== 'column' && (targetRawVal === undefined || targetRawVal === null || String(targetRawVal).trim() === '')) {
+        return;
+      }
+
+      // 1. Date comparison check
+      const dateA = parseDateValue(val);
+      const dateTarget = parseDateValue(targetRawVal);
+      const isDateComparison = dateA !== null && dateTarget !== null;
+
+      if (isDateComparison && dateA && dateTarget) {
+        const timeA = dateA.getTime();
+        const timeTarget = dateTarget.getTime();
+        const isSameDay =
+          dateA.getFullYear() === dateTarget.getFullYear() &&
+          dateA.getMonth() === dateTarget.getMonth() &&
+          dateA.getDate() === dateTarget.getDate();
+
+        if (condOperator === 'less_equal' && (timeA <= timeTarget || isSameDay)) matched++;
+        else if (condOperator === 'less' && timeA < timeTarget) matched++;
+        else if (condOperator === 'greater_equal' && (timeA >= timeTarget || isSameDay)) matched++;
+        else if (condOperator === 'greater' && timeA > timeTarget) matched++;
+        else if (condOperator === 'equals' && isSameDay) matched++;
+        else if (condOperator === 'not_equals' && !isSameDay) matched++;
+        else if (condOperator === 'between') {
+          const dateEnd = parseDateValue(condSecondValue);
+          if (dateEnd) {
+            const endOfDay = new Date(dateEnd.getFullYear(), dateEnd.getMonth(), dateEnd.getDate(), 23, 59, 59, 999).getTime();
+            if (timeA >= timeTarget && timeA <= endOfDay) matched++;
+          }
+        }
+        return;
+      }
+
+      // 2. Numeric and Text Comparisons
+      const strVal = String(val ?? '').trim().toLowerCase();
+      const strTarget = String(targetRawVal ?? '').trim().toLowerCase();
+      const isStrictNumber =
+        !isNaN(Number(String(val).trim())) && !isNaN(Number(String(targetRawVal).trim()));
+      const numVal = isStrictNumber ? parseCleanNumber(val) : NaN;
+      const numTarget = isStrictNumber ? parseCleanNumber(targetRawVal) : NaN;
+      const isNumericComparison = isStrictNumber && !isNaN(numVal) && !isNaN(numTarget);
+
+      switch (condOperator) {
+        case 'less_equal':
+          if (isNumericComparison ? numVal <= numTarget : strVal <= strTarget) matched++;
+          break;
+        case 'less':
+          if (isNumericComparison ? numVal < numTarget : strVal < strTarget) matched++;
+          break;
+        case 'greater_equal':
+          if (isNumericComparison ? numVal >= numTarget : strVal >= strTarget) matched++;
+          break;
+        case 'greater':
+          if (isNumericComparison ? numVal > numTarget : strVal > strTarget) matched++;
+          break;
+        case 'equals':
+          if (isNumericComparison ? numVal === numTarget : strVal === strTarget) matched++;
+          break;
+        case 'not_equals':
+          if (isNumericComparison ? numVal !== numTarget : strVal !== strTarget) matched++;
+          break;
+        case 'contains':
+          if (strVal.includes(strTarget)) matched++;
+          break;
+        case 'between': {
+          const numSecond = parseCleanNumber(condSecondValue);
+          if (isNumericComparison && !isNaN(numSecond) && numVal >= numTarget && numVal <= numSecond) matched++;
+          break;
+        }
+        default:
+          if (strVal === strTarget) matched++;
+      }
+    });
+
+    return {
+      count: matched,
+      total,
+      pct: total > 0 ? Math.round((matched / total) * 100) : 0,
+    };
+  }, [salesData, condSourceCol, condOperator, condCompareType, condCompareCol, condValue, condSecondValue]);
+
+  // Compute distinct values and counts for each column
   const getValuesForRule = (ruleId: string, col: string) => {
     if (!salesData || salesData.length === 0) return [];
 
-    // Filter dataset by all other active rules first (cascading dependency)
     const otherRules = rules.filter((r) => r.id !== ruleId && ((r.selectedValues && r.selectedValues.length > 0) || r.value));
     let baseRecords = salesData;
 
@@ -109,68 +283,7 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     return list;
   };
 
-  // Dynamically extract all unique columns present in the dataset and availableColumns
-  const dynamicColumns = useMemo(() => {
-    const list: string[] = [];
-    const seen = new Set<string>();
-
-    const addCol = (c: string) => {
-      if (!c || c === 'id' || c.startsWith('__')) return;
-      const clean = c.trim();
-      const lower = clean.toLowerCase();
-      if (!seen.has(lower)) {
-        seen.add(lower);
-        list.push(clean);
-      }
-    };
-
-    // 1. First add columns from salesData rows
-    if (salesData && salesData.length > 0) {
-      salesData.forEach((row) => {
-        if (row && typeof row === 'object') {
-          Object.keys(row).forEach(addCol);
-        }
-      });
-    }
-
-    // 2. Add availableColumns
-    if (availableColumns && availableColumns.length > 0) {
-      availableColumns.forEach(addCol);
-    }
-
-    // 3. Fallbacks if empty
-    if (list.length === 0) {
-      ['region', 'category', 'product', 'channel', 'date', 'revenue', 'cost', 'profit', 'quantity'].forEach(addCol);
-    }
-
-    return list;
-  }, [salesData, availableColumns]);
-
-  // Compute baseline distinct values and counts for each column
-  const columnDistinctValues = useMemo(() => {
-    const map: Record<string, { value: string; count: number }[]> = {};
-    if (!salesData || salesData.length === 0) return map;
-
-    dynamicColumns.forEach((col) => {
-      const counts: Record<string, number> = {};
-      salesData.forEach((row) => {
-        const val = getRecordValue(row, col);
-        if (val !== undefined && val !== null && !isBlankValue(val)) {
-          const strVal = String(val).trim();
-          counts[strVal] = (counts[strVal] || 0) + 1;
-        }
-      });
-
-      const list = Object.entries(counts).map(([value, count]) => ({ value, count }));
-      // Sort descending by count, then alphabetically
-      list.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
-      map[col] = list;
-    });
-
-    return map;
-  }, [salesData, dynamicColumns]);
-
-  // Add a new filter slot
+  // Add standard column dropdown filter
   const handleAddNewSlot = (defaultCol?: string) => {
     const existingCols = rules.map((r) => r.column);
     const candidate =
@@ -185,8 +298,85 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
     onUpdateFilterState({
       rules: [...rules, newRule],
     });
-    // Open its dropdown immediately for convenience
     setActiveDropdownRuleId(newRule.id);
+  };
+
+  // Open condition creator modal
+  const handleOpenConditionModal = (ruleToEdit?: ActiveFilterRule) => {
+    if (ruleToEdit) {
+      setEditingRuleId(ruleToEdit.id);
+      setCondSourceCol(ruleToEdit.column);
+      setCondOperator(ruleToEdit.operator || 'less_equal');
+      setCondCompareType(ruleToEdit.compareType || (ruleToEdit.compareColumn ? 'column' : 'value'));
+      setCondCompareCol(ruleToEdit.compareColumn || dynamicColumns[1] || dynamicColumns[0]);
+      setCondValue(ruleToEdit.value || '');
+      setCondSecondValue(ruleToEdit.secondValue || '');
+    } else {
+      setEditingRuleId(null);
+      setCondSourceCol(dynamicColumns[0] || 'date');
+      setCondOperator('less_equal');
+      setCondCompareType('column');
+      setCondCompareCol(dynamicColumns[1] || dynamicColumns[0]);
+      setCondValue('');
+      setCondSecondValue('');
+    }
+    setIsConditionModalOpen(true);
+  };
+
+  // Save the condition rule
+  const handleSaveConditionRule = () => {
+    const opLabels: Record<string, string> = {
+      less_equal: '<=',
+      less: '<',
+      greater_equal: '>=',
+      greater: '>',
+      equals: '==',
+      not_equals: '!=',
+      contains: 'ประกอบด้วย',
+      between: 'อยู่ระหว่าง',
+    };
+
+    const targetDesc =
+      condCompareType === 'column'
+        ? getColLabel(condCompareCol)
+        : condOperator === 'between'
+        ? `${condValue} ถึง ${condSecondValue}`
+        : condValue;
+
+    const label = `${getColLabel(condSourceCol)} ${opLabels[condOperator] || condOperator} ${targetDesc}`;
+
+    if (editingRuleId) {
+      const updated = rules.map((r) =>
+        r.id === editingRuleId
+          ? {
+              ...r,
+              column: condSourceCol,
+              operator: condOperator as any,
+              compareType: condCompareType,
+              compareColumn: condCompareType === 'column' ? condCompareCol : undefined,
+              value: condCompareType === 'value' ? condValue : undefined,
+              secondValue: condCompareType === 'value' && condOperator === 'between' ? condSecondValue : undefined,
+              label,
+              selectedValues: undefined,
+            }
+          : r
+      );
+      onUpdateFilterState({ rules: updated });
+    } else {
+      const newRule: ActiveFilterRule = {
+        id: `cond-rule-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        column: condSourceCol,
+        operator: condOperator as any,
+        compareType: condCompareType,
+        compareColumn: condCompareType === 'column' ? condCompareCol : undefined,
+        value: condCompareType === 'value' ? condValue : undefined,
+        secondValue: condCompareType === 'value' && condOperator === 'between' ? condSecondValue : undefined,
+        label,
+      };
+      onUpdateFilterState({ rules: [...rules, newRule] });
+    }
+
+    setIsConditionModalOpen(false);
   };
 
   // Update a rule
@@ -244,7 +434,12 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
   };
 
   const hasActiveFilters =
-    rules.some((r) => (r.selectedValues && r.selectedValues.length > 0) || r.value) ||
+    rules.some(
+      (r) =>
+        (r.selectedValues && r.selectedValues.length > 0) ||
+        r.value ||
+        (r.compareType === 'column' && r.compareColumn)
+    ) ||
     filterState.regions.length > 0 ||
     filterState.categories.length > 0 ||
     !!filterState.crossFilter ||
@@ -294,8 +489,67 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
           <span>ไม่นับแถวว่าง (Skip Blanks)</span>
         </button>
 
-        {/* 2. Column-based Filter Slots */}
+        {/* 2. Column-based Filter Slots & Conditional Rules */}
         {rules.map((rule) => {
+          const isConditionRule =
+            rule.compareType === 'column' ||
+            (rule.operator && ['less_equal', 'less', 'greater_equal', 'greater', 'between'].includes(rule.operator));
+
+          // A) Conditional Filter Rule Chip (e.g. date <= targetDate or revenue >= cost)
+          if (isConditionRule) {
+            const opSymbol: Record<string, string> = {
+              less_equal: '≤',
+              less: '<',
+              greater_equal: '≥',
+              greater: '>',
+              equals: '=',
+              not_equals: '≠',
+              between: 'ระหว่าง',
+              contains: 'มี',
+            };
+
+            const targetDesc =
+              rule.compareType === 'column' && rule.compareColumn
+                ? getColLabel(rule.compareColumn)
+                : rule.operator === 'between'
+                ? `${rule.value}..${rule.secondValue}`
+                : rule.value;
+
+            return (
+              <div
+                key={rule.id}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border text-xs shadow-xs font-medium transition ${
+                  isDark
+                    ? 'bg-indigo-950/60 border-indigo-400/60 text-indigo-200'
+                    : 'bg-indigo-50 border-indigo-300 text-indigo-900'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => handleOpenConditionModal(rule)}
+                  className="hover:underline flex items-center gap-1 cursor-pointer"
+                  title="คลิกเพื่อแก้ไขเงื่อนไขนี้"
+                >
+                  <span className="font-bold text-white">{getColLabel(rule.column)}</span>
+                  <span className="px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[11px]">
+                    {opSymbol[rule.operator || ''] || rule.operator}
+                  </span>
+                  <span className="font-bold text-amber-300">{targetDesc}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveRule(rule.id)}
+                  title="ลบเงื่อนไขนี้"
+                  className="text-slate-400 hover:text-rose-400 p-0.5 ml-1 transition cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          }
+
+          // B) Standard Distinct Values Filter Slot
           const ruleDistinct = getValuesForRule(rule.id, rule.column);
           const distinct = ruleDistinct.length > 0 ? ruleDistinct : (columnDistinctValues[rule.column] || []);
           const selected = rule.selectedValues || (rule.value ? [rule.value] : []);
@@ -494,7 +748,7 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
                     )}
                   </div>
 
-                  {/* Dropdown footer summary */}
+                  {/* Dropdown footer */}
                   <div className="px-3 py-2 bg-black/20 border-t border-violet-500/20 flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">
                       เลือกแล้ว: <strong className="text-violet-300">{selected.length}</strong> ค่า
@@ -513,7 +767,23 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
           );
         })}
 
-        {/* "+ เพิ่มตัวกรอง" Button */}
+        {/* "+ กรองตามเงื่อนไข (วันที่/เปรียบเทียบคอลัมน์)" Button */}
+        <button
+          id="btn-add-condition-rule"
+          type="button"
+          onClick={() => handleOpenConditionModal()}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer shadow-xs ${
+            isDark
+              ? 'bg-gradient-to-r from-indigo-900/40 to-violet-900/40 hover:from-indigo-900/60 hover:to-violet-900/60 border-indigo-500/50 hover:border-indigo-400 text-indigo-300 hover:text-white'
+              : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-800'
+          }`}
+          title="สร้างเงื่อนไขกรองขั้นสูง เช่น วันที่ใน Col A <= วันที่ใน Col B หรือยอดขาย > ต้นทุน"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+          <span>+ กรองตามเงื่อนไข (เปรียบเทียบ/วันที่)</span>
+        </button>
+
+        {/* "+ เพิ่มตัวกรองคอลัมน์" Button */}
         <button
           id="btn-add-filter-slot"
           type="button"
@@ -544,7 +814,7 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
         )}
       </div>
 
-      {/* Right: Cross-Filter Indicator (if user clicked a bar/pie on canvas) */}
+      {/* Right: Cross-Filter Indicator */}
       {filterState.crossFilter && (
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-600/20 border border-violet-500/40 text-violet-300 text-[11px] font-medium">
           <Sparkles className="w-3.5 h-3.5 text-violet-400" />
@@ -560,6 +830,236 @@ export const InlineFilterBar: React.FC<InlineFilterBarProps> = ({
           >
             <X className="w-3 h-3" />
           </button>
+        </div>
+      )}
+
+      {/* Advanced Condition Modal */}
+      {isConditionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-[#15102d] border border-indigo-500/40 rounded-3xl p-6 shadow-2xl shadow-indigo-950/50 text-white flex flex-col font-sans">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md">
+                  <SlidersHorizontal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {editingRuleId ? 'แก้ไขเงื่อนไขการกรอง' : 'สร้างเงื่อนไขการกรองข้อมูล (Conditional Rule)'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    กำหนดเงื่อนไขเปรียบเทียบระหว่างคอลัมน์ หรือเปรียบเทียบกับค่าวันที่/ตัวเลข
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConditionModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Condition Builder Fields */}
+            <div className="space-y-4">
+              {/* 1. Source Column */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  1. เลือกคอลัมน์ที่ต้องการตรวจสอบ (Source Column):
+                </label>
+                <select
+                  value={condSourceCol}
+                  onChange={(e) => setCondSourceCol(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0f0a22] border border-violet-500/30 text-white text-xs font-bold focus:outline-none focus:border-indigo-400"
+                >
+                  {dynamicColumns.map((col) => (
+                    <option key={col} value={col}>
+                      {getColLabel(col)} ({col})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. Operator Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  2. เลือกเงื่อนไขเปรียบเทียบ (Comparison Operator):
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                  {[
+                    { id: 'less_equal', label: '≤ น้อยกว่าหรือเท่ากับ', desc: 'มีค่าน้อยกว่าหรือเท่ากับ' },
+                    { id: 'less', label: '< น้อยกว่า', desc: 'มีค่าน้อยกว่า' },
+                    { id: 'greater_equal', label: '≥ มากกว่าหรือเท่ากับ', desc: 'มีค่ามากกว่าหรือเท่ากับ' },
+                    { id: 'greater', label: '> มากกว่า', desc: 'มีค่ามากกว่า' },
+                    { id: 'equals', label: '= เท่ากับ', desc: 'มีค่าเท่ากันเป๊ะ' },
+                    { id: 'not_equals', label: '≠ ไม่เท่ากับ', desc: 'มีค่าไม่เท่ากัน' },
+                    { id: 'between', label: '↔ อยู่ระหว่าง', desc: 'มีค่าอยู่ระหว่าง A ถึง B' },
+                    { id: 'contains', label: '🔍 ประกอบด้วย', desc: 'มีคำที่ระบุในข้อความ' },
+                  ].map((op) => (
+                    <button
+                      key={op.id}
+                      type="button"
+                      onClick={() => setCondOperator(op.id)}
+                      className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                        condOperator === op.id
+                          ? 'bg-indigo-600 border-indigo-400 text-white shadow-md'
+                          : 'bg-[#0f0a22] border-white/5 text-slate-300 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="font-bold text-xs">{op.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Comparison Mode: Column vs Fixed Value */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-300">
+                    3. เปรียบเทียบกับอะไร (Target Comparison):
+                  </label>
+                  <div className="flex items-center gap-1 bg-[#0b071e] p-0.5 rounded-lg border border-violet-500/20 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setCondCompareType('column')}
+                      className={`px-2.5 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                        condCompareType === 'column'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      คอลัมน์อื่นในตาราง
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCondCompareType('value')}
+                      className={`px-2.5 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                        condCompareType === 'value'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      กำหนดค่า / วันที่
+                    </button>
+                  </div>
+                </div>
+
+                {condCompareType === 'column' ? (
+                  <div className="p-3 rounded-2xl bg-indigo-950/30 border border-indigo-500/30">
+                    <div className="flex items-center gap-2 mb-2 text-xs text-indigo-300 font-semibold">
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      <span>เลือกคอลัมน์เปรียบเทียบในแถวเดียวกัน:</span>
+                    </div>
+                    <select
+                      value={condCompareCol}
+                      onChange={(e) => setCondCompareCol(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0f0a22] border border-indigo-400/40 text-white text-xs font-bold focus:outline-none focus:border-indigo-400"
+                    >
+                      {dynamicColumns.map((col) => (
+                        <option key={col} value={col}>
+                          {getColLabel(col)} ({col})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      💡 ตัวอย่าง: นับเมื่อวันที่ใน <span className="text-white font-bold">[{getColLabel(condSourceCol)}]</span>{' '}
+                      มีค่าน้อยกว่าหรือเท่ากับ วันที่ใน{' '}
+                      <span className="text-amber-300 font-bold">[{getColLabel(condCompareCol)}]</span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-2xl bg-[#0f0a22] border border-violet-500/30 space-y-2">
+                    {condOperator === 'between' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">ค่าเริ่มต้น (จาก):</label>
+                          <input
+                            type="text"
+                            value={condValue}
+                            onChange={(e) => setCondValue(e.target.value)}
+                            placeholder="เช่น 2026-01-01 หรือ 1000"
+                            className="w-full px-3 py-2 rounded-xl bg-[#140f2e] border border-violet-500/30 text-white text-xs focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">ค่าสิ้นสุด (ถึง):</label>
+                          <input
+                            type="text"
+                            value={condSecondValue}
+                            onChange={(e) => setCondSecondValue(e.target.value)}
+                            placeholder="เช่น 2026-12-31 หรือ 5000"
+                            className="w-full px-3 py-2 rounded-xl bg-[#140f2e] border border-violet-500/30 text-white text-xs focus:outline-none focus:border-indigo-400"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">
+                          ระบุค่าวันที่, ตัวเลข, หรือข้อความ:
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={condValue}
+                            onChange={(e) => setCondValue(e.target.value)}
+                            placeholder="เช่น 2026-06-30 หรือ 5000"
+                            className="flex-1 px-3 py-2 rounded-xl bg-[#140f2e] border border-violet-500/30 text-white text-xs focus:outline-none focus:border-indigo-400"
+                          />
+                          {/* Quick Date Picker button */}
+                          <input
+                            type="date"
+                            onChange={(e) => setCondValue(e.target.value)}
+                            className="px-2.5 py-1.5 rounded-xl bg-[#1e1742] border border-violet-500/30 text-xs text-slate-200 cursor-pointer"
+                            title="เลือกวันที่จากปฏิทิน"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Live Match Counter Box */}
+              <div className="p-3 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div>
+                    <span className="text-xs font-bold text-white block">
+                      ผลการทดสอบเงื่อนไขกับข้อมูลปัจจุบัน:
+                    </span>
+                    <span className="text-[11px] text-slate-300">
+                      ตรงตามเงื่อนไข{' '}
+                      <strong className="text-emerald-400 font-bold">{liveConditionMatches.count}</strong> จาก{' '}
+                      {liveConditionMatches.total} รายการ ({liveConditionMatches.pct}%)
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {liveConditionMatches.pct}% ผ่าน
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2 pt-4 mt-4 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setIsConditionModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveConditionRule}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{editingRuleId ? 'อัปเดตเงื่อนไข' : 'ใช้งานเงื่อนไขการกรองนี้'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

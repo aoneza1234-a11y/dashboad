@@ -19,8 +19,9 @@ import {
   Eye,
   Layers,
   ChevronRight,
+  Sliders,
 } from 'lucide-react';
-import { VisualWidget, SalesRecord, FilterState, SheetConnectionConfig } from '../types';
+import { VisualWidget, SalesRecord, FilterState, SheetConnectionConfig, ThemeConfig } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
 import { DynamicWidgetCard } from './DynamicWidgetCard';
 import { InlineFilterBar } from './InlineFilterBar';
@@ -37,11 +38,13 @@ interface PublicViewerPortalProps {
   onClearFilters: () => void;
   onCrossFilter: (dimension: string, value: string | null) => void;
   themeStyles: ThemeStyles;
+  themeConfig?: ThemeConfig;
   connectionConfig: SheetConnectionConfig;
   onRefreshData?: () => void;
   isSyncing?: boolean;
   sharedByUserName?: string;
   sharedByUserId?: string;
+  onReturnToStudio?: () => void;
 }
 
 export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
@@ -54,11 +57,13 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
   onClearFilters,
   onCrossFilter,
   themeStyles,
+  themeConfig,
   connectionConfig,
   onRefreshData,
   isSyncing = false,
   sharedByUserName,
   sharedByUserId,
+  onReturnToStudio,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'freeform' | 'grid'>('freeform');
@@ -353,6 +358,18 @@ export const PublicViewerPortal: React.FC<PublicViewerPortalProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          {/* Return to Studio / Edit Mode */}
+          {onReturnToStudio && (
+            <button
+              onClick={onReturnToStudio}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white border border-indigo-400/50 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+              title="กลับไปยังหน้าสตูดิโอเพื่อปรับแต่งแดชบอร์ดต่อ"
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-200" />
+              <span>กลับหน้าแก้ไข</span>
+            </button>
+          )}
+
           {/* Detail View Button */}
           <button
             onClick={() => setShowDetailModal(true)}
