@@ -141,6 +141,20 @@ export interface VisualWidget {
   showHeaderIcon?: boolean;
   headerIconColor?: string;
   headerIconBg?: string;
+  // Table specific configurations
+  tableColumns?: string[];
+  tableMode?: 'raw' | 'aggregated';
+  tablePageSize?: number;
+  tableSearch?: boolean;
+  tableShowRowNumbers?: boolean;
+  tableSortColumn?: string;
+  tableSortDirection?: 'asc' | 'desc';
+  // Image / Company Logo specific configurations
+  imageUrl?: string;
+  imageFit?: 'contain' | 'cover' | 'fill' | 'none';
+  imageAlt?: string;
+  imageCaption?: string;
+  imageLinkUrl?: string;
   config?: Record<string, any>;
 }
 

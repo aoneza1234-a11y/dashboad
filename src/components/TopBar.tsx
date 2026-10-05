@@ -44,6 +44,8 @@ import {
   Bot,
   Bell,
   Loader2,
+  Image as ImageIcon,
+  Table,
 } from 'lucide-react';
 import { FilterState, ThemePreset, VisualType, TeamUser } from '../types';
 import { ThemeStyles } from '../utils/themeStyles';
@@ -65,6 +67,8 @@ interface TopBarProps {
   onOpenTheme: () => void;
   onAddVisual: () => void;
   onAddFloatingText: () => void;
+  onAddImage?: () => void;
+  onAddTable?: () => void;
   onAddShape?: (shapeType: VisualType) => void;
   onOpenFilter: () => void;
   onCreateDraft: () => void;
@@ -117,6 +121,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenTheme,
   onAddVisual,
   onAddFloatingText,
+  onAddImage,
+  onAddTable,
   onOpenFilter,
   onCreateDraft,
   onOpenDataEditor,
@@ -613,6 +619,40 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Type className="w-3.5 h-3.5 text-violet-400" />
             <span>T ข้อความลอย</span>
           </button>
+
+          {/* Add Image / Company Logo */}
+          {onAddImage && (
+            <button
+              id="btn-add-image-topbar"
+              onClick={onAddImage}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition cursor-pointer ${
+                isLight
+                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                  : 'bg-[#221c3d] border-[#342b5e] text-slate-200 hover:bg-[#2b244d]'
+              }`}
+              title="แนบรูปภาพ หรืออัปโหลดโลโก้บริษัท (PNG, JPG, SVG, WebP)"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+              <span>+ แนบรูป / โลโก้</span>
+            </button>
+          )}
+
+          {/* Add Table Widget */}
+          {onAddTable && (
+            <button
+              id="btn-add-table-topbar"
+              onClick={onAddTable}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border transition cursor-pointer ${
+                isLight
+                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                  : 'bg-[#221c3d] border-[#342b5e] text-slate-200 hover:bg-[#2b244d]'
+              }`}
+              title="เพิ่มตารางข้อมูลหลายคอลัมน์ พร้อมตัวค้นหาและแบ่งหน้า"
+            >
+              <Table className="w-3.5 h-3.5 text-emerald-400" />
+              <span>+ ตารางข้อมูล</span>
+            </button>
+          )}
 
           {/* Shapes Dropdown with clean frame labels & no clipping */}
           {onAddShape && (

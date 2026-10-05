@@ -347,12 +347,18 @@ export async function fetchAllTeamUsers(): Promise<TeamUser[]> {
           lastLoginAt: u.lastLoginAt || 'เพิ่งเข้าสู่ระบบ',
           assignedTemplateIds: u.assignedTemplateIds || ['tpl-1'],
           password: u.password,
+          plan: u.plan || 'Pro',
+          company: u.company,
+          accountType: u.accountType,
         }));
 
-        // Merge with default users so none are lost
+        // Merge with default users: defaults first, then server users take priority
         const byId = new Map<string, TeamUser>();
         for (const u of DEFAULT_TEAM_USERS) byId.set(u.id, u);
-        for (const u of mapped) byId.set(u.id, u);
+        for (const u of mapped) {
+          const prev = byId.get(u.id);
+          byId.set(u.id, prev ? { ...prev, ...u } : u);
+        }
         const merged = Array.from(byId.values());
 
         cachedTeamUsers = merged;
@@ -398,10 +404,13 @@ export function getTeamUsers(): TeamUser[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure all default users are present in merged list
+        // Ensure all default users are present in merged list, but user saved values override defaults
         const byId = new Map<string, TeamUser>();
         for (const u of DEFAULT_TEAM_USERS) byId.set(u.id, u);
-        for (const u of parsed) byId.set(u.id, u);
+        for (const u of parsed) {
+          const prev = byId.get(u.id);
+          byId.set(u.id, prev ? { ...prev, ...u } : u);
+        }
         cachedTeamUsers = Array.from(byId.values());
         return cachedTeamUsers;
       }

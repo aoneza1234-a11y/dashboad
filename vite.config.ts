@@ -279,9 +279,23 @@ function dashboardFileStoragePlugin(): Plugin {
                     res.end(JSON.stringify({ success: true, user: users[userIndex] }));
                     return;
                   }
-                  res.statusCode = 404;
+                  // If not yet in users.json (e.g. from default users list), create entry
+                  const newUser = {
+                    userId: targetUserId || `usr-${Date.now()}`,
+                    role: newRole,
+                    name: parsed.name || parsed.displayName || targetUserId,
+                    displayName: parsed.displayName || parsed.name || targetUserId,
+                    email: parsed.email || `${targetUserId}@company.com`,
+                    status: 'active',
+                    department: parsed.department || 'ทั่วไป',
+                    updatedAt: new Date().toISOString(),
+                    createdDate: new Date().toISOString(),
+                  };
+                  users.push(newUser);
+                  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf-8');
+                  res.statusCode = 200;
                   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                  res.end(JSON.stringify({ success: false, error: 'User not found' }));
+                  res.end(JSON.stringify({ success: true, user: newUser }));
                   return;
                 }
 

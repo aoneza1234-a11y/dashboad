@@ -48,6 +48,10 @@ import {
   Shapes,
   Calculator,
   Palette,
+  Upload,
+  Link as LinkIcon,
+  Columns,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
   VisualWidget,
@@ -59,6 +63,7 @@ import {
 } from '../types';
 import { getRecordValue } from '../utils/calcEngine';
 import { WIDGET_ICONS, getDefaultIconForWidget } from './WidgetHeaderIcon';
+import { PRESET_LOGOS } from './ImageWidgetCard';
 
 interface InspectorProps {
   widget: VisualWidget | null;
@@ -382,89 +387,357 @@ export const Inspector: React.FC<InspectorProps> = ({
                 />
               </div>
 
-              {/* Dimension (หัวข้อจัดกลุ่ม) */}
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  หัวข้อจัดกลุ่ม (Dimension)
-                </label>
-                <select
-                  value={widget.dimension || availableColumns[0] || 'category'}
-                  onChange={(e) => onUpdateWidget(widget.id, { dimension: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
-                >
-                  {availableColumns.map((col) => (
-                    <option key={col} value={col}>
-                      {col}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* IMAGE / COMPANY LOGO SPECIFIC SETTINGS */}
+              {widget.type === 'image' && (
+                <div className="space-y-3 p-3 bg-violet-50/40 rounded-xl border border-violet-200">
+                  {/* File Upload Button */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      อัปโหลดรูปภาพ / โลโก้บริษัทจากเครื่อง
+                    </label>
+                    <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 border-2 border-dashed border-violet-400/60 hover:border-violet-600 rounded-xl bg-violet-50/70 hover:bg-violet-100/70 text-violet-700 font-semibold cursor-pointer transition">
+                      <Upload className="w-4 h-4 text-violet-600" />
+                      <span>เลือกไฟล์ภาพ (PNG, JPG, SVG, WebP)</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const dataUrl = ev.target?.result as string;
+                              if (dataUrl) {
+                                onUpdateWidget(widget.id, {
+                                  imageUrl: dataUrl,
+                                  imageAlt: file.name.replace(/\.[^/.]+$/, ''),
+                                });
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
 
-              {/* Metric (ค่าที่วิเคราะห์) */}
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  ค่าที่วิเคราะห์ (Metric)
-                </label>
-                <select
-                  value={widget.metric || 'revenue'}
-                  onChange={(e) => onUpdateWidget(widget.id, { metric: e.target.value })}
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
-                >
-                  <option value="revenue">ยอดขาย (Revenue / บาท)</option>
-                  <option value="profit">กำไรขั้นต้น (Profit / บาท)</option>
-                  <option value="cost">ต้นทุน (Cost / บาท)</option>
-                  <option value="quantity">จำนวน (Quantity)</option>
-                  {calculatedFields && calculatedFields.length > 0 && (
-                    <optgroup label="✨ ฟิลด์คำนวณ (Calculated Fields)">
-                      {calculatedFields.map((cf) => (
-                        <option key={cf.id} value={cf.name}>
-                          {cf.name} ({cf.expression})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {availableColumns
-                    .filter((c) => !['category', 'region', 'product', 'date', 'orderId'].includes(c))
-                    .map((col) => (
+                  {/* Image URL Input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      หรือ วางลิงก์รูปภาพ (Image URL)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <LinkIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={widget.imageUrl || ''}
+                          onChange={(e) => onUpdateWidget(widget.id, { imageUrl: e.target.value })}
+                          placeholder="https://example.com/logo.png"
+                          className="w-full pl-8 pr-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
+                        />
+                      </div>
+                      {widget.imageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateWidget(widget.id, { imageUrl: '' })}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg border border-rose-200 transition cursor-pointer"
+                          title="ลบรูปภาพ"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Preset Logos Selector */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      หรือ เลือกโลโก้ธุรกิจมาตรฐานสำเร็จรูป
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {PRESET_LOGOS.map((logo) => {
+                        const isChosen = widget.imageUrl === logo.svg;
+                        return (
+                          <button
+                            key={logo.id}
+                            type="button"
+                            onClick={() => onUpdateWidget(widget.id, { imageUrl: logo.svg, imageAlt: logo.name })}
+                            className={`p-1 rounded-xl border flex flex-col items-center justify-center transition cursor-pointer ${
+                              isChosen ? 'border-violet-600 bg-violet-100 ring-2 ring-violet-500/40' : 'border-slate-200 bg-white hover:bg-slate-100'
+                            }`}
+                            title={logo.name}
+                          >
+                            <img src={logo.svg} alt={logo.name} className="w-8 h-8 object-contain" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Image Fit Mode */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      ขนาดการแสดงผลรูป (Image Fit)
+                    </label>
+                    <select
+                      value={widget.imageFit || 'contain'}
+                      onChange={(e) => onUpdateWidget(widget.id, { imageFit: e.target.value as any })}
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
+                    >
+                      <option value="contain">พอดีการ์ด (Contain - รักษาสัดส่วน)</option>
+                      <option value="cover">เต็มพื้นที่การ์ด (Cover - ตัดส่วนเกิน)</option>
+                      <option value="fill">ยืดเต็มการ์ด (Fill - ยืดตามขนาด)</option>
+                    </select>
+                  </div>
+
+                  {/* Optional Hyperlink on Click */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      ลิงก์เมื่อคลิกภาพ (Link URL - เสริม)
+                    </label>
+                    <input
+                      type="text"
+                      value={widget.imageLinkUrl || ''}
+                      onChange={(e) => onUpdateWidget(widget.id, { imageLinkUrl: e.target.value })}
+                      placeholder="https://yourcompany.com"
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Dimension (หัวข้อจัดกลุ่ม) - Shown for charts & tables */}
+              {widget.type !== 'image' && !widget.type.startsWith('shape_') && (
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    หัวข้อจัดกลุ่ม (Dimension)
+                  </label>
+                  <select
+                    value={widget.dimension || availableColumns[0] || 'category'}
+                    onChange={(e) => onUpdateWidget(widget.id, { dimension: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
+                  >
+                    {availableColumns.map((col) => (
                       <option key={col} value={col}>
                         {col}
                       </option>
                     ))}
-                </select>
+                  </select>
+                </div>
+              )}
 
-                {onOpenFormulaBuilder && (
-                  <button
-                    type="button"
-                    onClick={onOpenFormulaBuilder}
-                    className="w-full mt-2 py-1.5 px-3 border border-dashed border-violet-300 hover:border-violet-500 bg-violet-50/60 hover:bg-violet-100 text-violet-700 font-medium rounded-lg text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+              {/* Metric (ค่าที่วิเคราะห์) */}
+              {widget.type !== 'image' && !widget.type.startsWith('shape_') && (
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    ค่าที่วิเคราะห์ (Metric)
+                  </label>
+                  <select
+                    value={widget.metric || 'revenue'}
+                    onChange={(e) => onUpdateWidget(widget.id, { metric: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
                   >
-                    <Calculator className="w-3.5 h-3.5 text-violet-600" />
-                    <span>+ สร้างหรือจัดการสูตรคำนวณ (Formula Builder)</span>
-                  </button>
-                )}
-              </div>
+                    <option value="revenue">ยอดขาย (Revenue / บาท)</option>
+                    <option value="profit">กำไรขั้นต้น (Profit / บาท)</option>
+                    <option value="cost">ต้นทุน (Cost / บาท)</option>
+                    <option value="quantity">จำนวน (Quantity)</option>
+                    {calculatedFields && calculatedFields.length > 0 && (
+                      <optgroup label="✨ ฟิลด์คำนวณ (Calculated Fields)">
+                        {calculatedFields.map((cf) => (
+                          <option key={cf.id} value={cf.name}>
+                            {cf.name} ({cf.expression})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {availableColumns
+                      .filter((c) => !['category', 'region', 'product', 'date', 'orderId'].includes(c))
+                      .map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                  </select>
+
+                  {onOpenFormulaBuilder && (
+                    <button
+                      type="button"
+                      onClick={onOpenFormulaBuilder}
+                      className="w-full mt-2 py-1.5 px-3 border border-dashed border-violet-300 hover:border-violet-500 bg-violet-50/60 hover:bg-violet-100 text-violet-700 font-medium rounded-lg text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Calculator className="w-3.5 h-3.5 text-violet-600" />
+                      <span>+ สร้างหรือจัดการสูตรคำนวณ (Formula Builder)</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Calculation / Aggregation */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  การคำนวณ (Aggregation)
-                </label>
-                <select
-                  value={widget.aggregation || 'sum'}
-                  onChange={(e) =>
-                    onUpdateWidget(widget.id, { aggregation: e.target.value as any })
-                  }
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white font-medium"
-                >
-                  <option value="sum">ผลรวม (SUM)</option>
-                  <option value="avg">ค่าเฉลี่ย (AVERAGE)</option>
-                  <option value="count">นับจำนวนทั้งหมด (COUNT)</option>
-                  <option value="count_distinct">★ นับค่าไม่ซ้ำ (COUNT DISTINCT - ตัดข้อมูลซ้ำ)</option>
-                  <option value="min">ค่าน้อยสุด (MIN)</option>
-                  <option value="max">ค่ามากสุด (MAX)</option>
-                  <option value="median">ค่ามัธยฐาน (MEDIAN)</option>
-                </select>
-              </div>
+              {widget.type !== 'image' && !widget.type.startsWith('shape_') && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    การคำนวณ (Aggregation)
+                  </label>
+                  <select
+                    value={widget.aggregation || 'sum'}
+                    onChange={(e) =>
+                      onUpdateWidget(widget.id, { aggregation: e.target.value as any })
+                    }
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white font-medium"
+                  >
+                    <option value="sum">ผลรวม (SUM)</option>
+                    <option value="avg">ค่าเฉลี่ย (AVERAGE)</option>
+                    <option value="count">นับจำนวนทั้งหมด (COUNT)</option>
+                    <option value="count_distinct">★ นับค่าไม่ซ้ำ (COUNT DISTINCT - ตัดข้อมูลซ้ำ)</option>
+                    <option value="min">ค่าน้อยสุด (MIN)</option>
+                    <option value="max">ค่ามากสุด (MAX)</option>
+                    <option value="median">ค่ามัธยฐาน (MEDIAN)</option>
+                  </select>
+                </div>
+              )}
+
+              {/* TABLE SPECIFIC SETTINGS */}
+              {widget.type === 'table' && (
+                <div className="space-y-3 pt-3 border-t border-slate-200 mt-2">
+                  <div className="text-[11px] font-bold text-violet-700 uppercase tracking-wide flex items-center gap-1">
+                    <Table className="w-3.5 h-3.5" />
+                    <span>ตั้งค่าตารางข้อมูล (Data Grid Settings)</span>
+                  </div>
+
+                  {/* Table Mode */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      รูปแบบการแสดงผลตาราง
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => onUpdateWidget(widget.id, { tableMode: 'raw' })}
+                        className={`py-1.5 px-2 rounded-md font-semibold text-center transition cursor-pointer ${
+                          (widget.tableMode || 'raw') === 'raw'
+                            ? 'bg-violet-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        ทุกแถวข้อมูลดิบ (Raw)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateWidget(widget.id, { tableMode: 'aggregated' })}
+                        className={`py-1.5 px-2 rounded-md font-semibold text-center transition cursor-pointer ${
+                          widget.tableMode === 'aggregated'
+                            ? 'bg-violet-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        สรุปผลตามหมวดหมู่ (Agg)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Column Headers Selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                        <Columns className="w-3.5 h-3.5 text-violet-600" />
+                        <span>เลือกหัวข้อคอลัมน์ที่จะแสดง ({widget.tableColumns?.length || 6}/{availableColumns.length})</span>
+                      </label>
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => onUpdateWidget(widget.id, { tableColumns: availableColumns })}
+                          className="text-violet-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          เลือกทั้งหมด
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const preferred = ['date', 'orderId', 'product', 'category', 'region', 'revenue', 'cost', 'profit', 'units'];
+                            const matched = preferred.filter((c) => availableColumns.includes(c));
+                            onUpdateWidget(widget.id, { tableColumns: matched.length > 0 ? matched : availableColumns.slice(0, 6) });
+                          }}
+                          className="text-slate-500 hover:underline cursor-pointer"
+                        >
+                          รีเซ็ต
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-slate-50 space-y-1">
+                      {availableColumns.map((col) => {
+                        const activeCols = widget.tableColumns || availableColumns.slice(0, 6);
+                        const isChecked = activeCols.includes(col);
+                        return (
+                          <label
+                            key={col}
+                            className="flex items-center gap-2 p-1 rounded hover:bg-slate-200/60 cursor-pointer text-xs select-none"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...activeCols, col]
+                                  : activeCols.filter((c) => c !== col);
+                                onUpdateWidget(widget.id, {
+                                  tableColumns: next.length > 0 ? next : [col],
+                                });
+                              }}
+                              className="rounded text-violet-600 w-3.5 h-3.5"
+                            />
+                            <span className={`font-medium ${isChecked ? 'text-slate-900 font-semibold' : 'text-slate-500'}`}>
+                              {col}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rows Per Page */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      จำนวนแถวที่แสดงต่อหน้า (Rows Per Page)
+                    </label>
+                    <select
+                      value={widget.tablePageSize || 10}
+                      onChange={(e) => onUpdateWidget(widget.id, { tablePageSize: Number(e.target.value) })}
+                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-violet-500 text-xs bg-white"
+                    >
+                      <option value={5}>5 แถวต่อหน้า</option>
+                      <option value={10}>10 แถวต่อหน้า (ค่ามาตรฐาน)</option>
+                      <option value={20}>20 แถวต่อหน้า</option>
+                      <option value={50}>50 แถวต่อหน้า</option>
+                      <option value={100}>100 แถวต่อหน้า</option>
+                    </select>
+                  </div>
+
+                  {/* Table Options: Search Box & Row Numbers */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={widget.tableSearch !== false}
+                        onChange={(e) => onUpdateWidget(widget.id, { tableSearch: e.target.checked })}
+                        className="rounded text-violet-600 w-3.5 h-3.5"
+                      />
+                      <span>แสดงช่องค้นหาข้อมูลในตาราง</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={widget.tableShowRowNumbers !== false}
+                        onChange={(e) => onUpdateWidget(widget.id, { tableShowRowNumbers: e.target.checked })}
+                        className="rounded text-violet-600 w-3.5 h-3.5"
+                      />
+                      <span>แสดงลำดับแถว (1, 2, 3...)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* KPI / Metric Custom Text & Labels */}
               {(widget.type === 'kpi' || !widget.type.startsWith('shape_')) && (

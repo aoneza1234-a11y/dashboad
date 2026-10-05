@@ -16,6 +16,15 @@ import {
   Tooltip,
   Legend,
   LabelList,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ScatterChart,
+  Scatter,
+  FunnelChart,
+  Funnel,
 } from 'recharts';
 import {
   Minus,
@@ -48,6 +57,8 @@ import {
 import { VisualWidget, SalesRecord, FilterState } from '../types';
 import { ShapeWidget } from './ShapeWidget';
 import { WidgetHeaderIconBadge } from './WidgetHeaderIcon';
+import { EnhancedTableWidget } from './EnhancedTableWidget';
+import { ImageWidgetCard } from './ImageWidgetCard';
 import { calculateMetricValue, aggregateForWidget, applyRecordFilters } from '../utils/calcEngine';
 import { ThemeStyles } from '../utils/themeStyles';
 
@@ -509,38 +520,71 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
       );
     }
 
-    // 3. Bar / Column Charts
-    if (widget.type === 'bar' || widget.type === 'column') {
+    // 3. Bar / Column / Horizontal Bar Charts
+    if (widget.type === 'bar' || widget.type === 'column' || widget.type === 'bar_horizontal') {
+      const isHorizontal = widget.type === 'bar_horizontal';
       return (
         <div className="w-full h-full min-h-0 pt-0.5">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
-              margin={{ top: 12, right: 12, left: -10, bottom: 20 }}
+              layout={isHorizontal ? 'vertical' : 'horizontal'}
+              margin={{ top: 12, right: 16, left: isHorizontal ? 20 : -10, bottom: isHorizontal ? 5 : 20 }}
               style={{
                 transform: `scale(${((widget.chartScale ?? 100) / 100)}) translate(${widget.offsetX ?? 0}px, ${widget.offsetY ?? 0}px)`,
                 transformOrigin: widget.chartAlign === 'left' ? 'left center' : widget.chartAlign === 'right' ? 'right center' : 'center center',
               }}
             >
-              {widget.showGrid !== false && <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#332a54' : '#e2e8f0'} />}
-              {widget.showXAxis !== false && (
-                <XAxis
-                  dataKey="name"
-                  stroke={isDark ? '#94a3b8' : '#64748b'}
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={0}
+              {widget.showGrid !== false && (
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={isHorizontal}
+                  horizontal={!isHorizontal}
+                  stroke={isDark ? '#332a54' : '#e2e8f0'}
                 />
               )}
-              {widget.showYAxis !== false && (
-                <YAxis
-                  stroke={isDark ? '#94a3b8' : '#64748b'}
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
-                />
+              {isHorizontal ? (
+                <>
+                  <XAxis
+                    type="number"
+                    stroke={isDark ? '#94a3b8' : '#64748b'}
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    stroke={isDark ? '#94a3b8' : '#64748b'}
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    width={80}
+                  />
+                </>
+              ) : (
+                <>
+                  {widget.showXAxis !== false && (
+                    <XAxis
+                      dataKey="name"
+                      stroke={isDark ? '#94a3b8' : '#64748b'}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                    />
+                  )}
+                  {widget.showYAxis !== false && (
+                    <YAxis
+                      stroke={isDark ? '#94a3b8' : '#64748b'}
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+                    />
+                  )}
+                </>
               )}
               {widget.showTooltip !== false && (
                 <Tooltip
@@ -557,11 +601,18 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
               {widget.showLegend && <Legend />}
               <Bar
                 dataKey="value"
-                radius={[6, 6, 0, 0]}
+                radius={isHorizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]}
                 onClick={(data: any) => handleItemClick(data.name)}
                 cursor="pointer"
               >
-                {widget.showDataLabels && <LabelList dataKey="value" position="top" formatter={formatVal} fontSize={10} />}
+                {widget.showDataLabels && (
+                  <LabelList
+                    dataKey="value"
+                    position={isHorizontal ? 'right' : 'top'}
+                    formatter={formatVal}
+                    fontSize={10}
+                  />
+                )}
                 {chartData.map((entry, idx) => {
                   const isDimMatch =
                     activeCrossFilter &&
@@ -771,38 +822,316 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
       );
     }
 
-    // 7. Table View
+    // 7. Table View (Enhanced Table Widget with multi-column headers, raw/agg modes, search & pagination)
     if (widget.type === 'table') {
       return (
-        <div className="w-full h-full overflow-auto text-xs">
-          <table className="w-full text-left border-collapse">
+        <EnhancedTableWidget
+          widget={widget}
+          records={widgetRecords}
+          allRecords={allRecords}
+          onUpdateWidget={onUpdateWidget}
+          onCrossFilter={onCrossFilter || (() => {})}
+          activeCrossFilter={activeCrossFilter}
+          currentPalette={currentPalette}
+          isDark={isDark}
+          formatVal={formatVal}
+          isPreviewMode={isPreviewMode}
+        />
+      );
+    }
+
+    // 8. Image / Company Logo View (Drag-and-drop, upload file, paste URL, preset logos)
+    if (widget.type === 'image') {
+      return (
+        <ImageWidgetCard
+          widget={widget}
+          onUpdateWidget={onUpdateWidget}
+          isSelected={isSelected}
+          isPreviewMode={isPreviewMode}
+        />
+      );
+    }
+
+    // 9. Radar Chart
+    if (widget.type === 'radar') {
+      const radarColor = currentPalette[0] || '#8b5cf6';
+      return (
+        <div className="w-full h-full min-h-0 pt-0.5">
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="70%" data={chartData}>
+              <PolarGrid stroke={isDark ? '#332a54' : '#e2e8f0'} />
+              <PolarAngleAxis
+                dataKey="name"
+                stroke={isDark ? '#94a3b8' : '#64748b'}
+                fontSize={10}
+              />
+              <PolarRadiusAxis
+                stroke={isDark ? '#64748b' : '#94a3b8'}
+                fontSize={9}
+                tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+              />
+              <Tooltip
+                formatter={(val: any) => [formatVal(Number(val)), getAggLabel()]}
+                contentStyle={{
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: isDark ? '#1b1633' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#0f172a',
+                }}
+              />
+              <Radar
+                name={getAggLabel()}
+                dataKey="value"
+                stroke={radarColor}
+                fill={radarColor}
+                fillOpacity={0.45}
+              />
+              {widget.showLegend && <Legend />}
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    // 10. Funnel Chart
+    if (widget.type === 'funnel') {
+      const sortedFunnel = [...chartData].sort((a, b) => b.value - a.value);
+      return (
+        <div className="w-full h-full min-h-0 pt-0.5 flex flex-col justify-center">
+          <ResponsiveContainer width="100%" height="90%">
+            <FunnelChart>
+              <Tooltip
+                formatter={(val: any) => [formatVal(Number(val)), getAggLabel()]}
+                contentStyle={{
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: isDark ? '#1b1633' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#0f172a',
+                }}
+              />
+              <Funnel dataKey="value" data={sortedFunnel} isAnimationActive>
+                <LabelList
+                  position="right"
+                  fill={isDark ? '#cbd5e1' : '#334155'}
+                  stroke="none"
+                  dataKey="name"
+                  fontSize={11}
+                />
+                {sortedFunnel.map((entry, idx) => (
+                  <Cell
+                    key={`funnel-cell-${idx}`}
+                    fill={entry.color || currentPalette[idx % currentPalette.length]}
+                  />
+                ))}
+              </Funnel>
+            </FunnelChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    // 11. Scatter Plot
+    if (widget.type === 'scatter') {
+      const scatterPoints = widgetRecords.map((r, idx) => {
+        const xVal = Number((r as any)[widget.dimension || 'cost'] ?? idx);
+        const yVal = Number((r as any)[widget.metric || 'revenue'] ?? 0);
+        const nameVal = String(
+          (r as any).product || (r as any).category || (r as any).region || `แถว ${idx + 1}`
+        );
+        return {
+          x: isNaN(xVal) ? idx : xVal,
+          y: isNaN(yVal) ? 0 : yVal,
+          name: nameVal,
+        };
+      });
+      const scatterColor = currentPalette[0] || '#8b5cf6';
+      return (
+        <div className="w-full h-full min-h-0 pt-0.5">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 12, right: 16, bottom: 20, left: -10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#332a54' : '#e2e8f0'} />
+              <XAxis
+                type="number"
+                dataKey="x"
+                name={widget.dimension || 'X'}
+                stroke={isDark ? '#94a3b8' : '#64748b'}
+                fontSize={11}
+                tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+              />
+              <YAxis
+                type="number"
+                dataKey="y"
+                name={widget.metric || 'Y'}
+                stroke={isDark ? '#94a3b8' : '#64748b'}
+                fontSize={11}
+                tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : v)}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                formatter={(val: any, name: any) => [formatVal(Number(val)), name]}
+                contentStyle={{
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: isDark ? '#1b1633' : '#ffffff',
+                  color: isDark ? '#ffffff' : '#0f172a',
+                }}
+              />
+              <Scatter name={widget.title} data={scatterPoints} fill={scatterColor} />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    // 12. Gauge / Progress Bar
+    if (widget.type === 'gauge' || widget.type === 'progressbar') {
+      const maxVal = Math.max(
+        1,
+        chartData.reduce((acc, c) => Math.max(acc, c.value), 0) * 1.2 || kpiValue * 1.2 || 100
+      );
+      const pct = Math.min(100, Math.round((kpiValue / maxVal) * 100));
+      const gaugeColor = matchedConditionalColor || currentPalette[0] || '#8b5cf6';
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center">
+          <div className="relative w-28 h-28 flex items-center justify-center">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+              <circle
+                cx="50"
+                cy="50"
+                r="40"
+                fill="none"
+                stroke={isDark ? '#261f47' : '#e2e8f0'}
+                strokeWidth="10"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r="40"
+                fill="none"
+                stroke={gaugeColor}
+                strokeWidth="10"
+                strokeDasharray={`${(pct / 100) * 251.2} 251.2`}
+                strokeLinecap="round"
+                className="transition-all duration-500"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-xl font-black">{pct}%</span>
+              <span className="text-[10px] opacity-60">เป้าหมาย</span>
+            </div>
+          </div>
+          <div className="mt-2">
+            <div className="text-base font-bold">{formatVal(kpiValue)}</div>
+            <div className="text-[10px] opacity-60">จากเป้า {formatVal(maxVal)}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // 13. Heatmap Matrix
+    if (widget.type === 'heatmap') {
+      const dimX = widget.dimension || 'region';
+      const dimY = 'category';
+      const xSet: string[] = Array.from(new Set<string>(widgetRecords.map((r: any) => String(r[dimX] || '')))).slice(0, 5);
+      const ySet: string[] = Array.from(new Set<string>(widgetRecords.map((r: any) => String(r[dimY] || '')))).slice(0, 5);
+      const metric = widget.metric || 'revenue';
+      const matrix: Record<string, Record<string, number>> = {};
+      let maxVal = 1;
+      for (const r of widgetRecords) {
+        const x = String((r as any)[dimX] || '');
+        const y = String((r as any)[dimY] || '');
+        const v = Number((r as any)[metric] || 0);
+        if (!matrix[y]) matrix[y] = {};
+        matrix[y][x] = (matrix[y][x] || 0) + v;
+        if (matrix[y][x] > maxVal) maxVal = matrix[y][x];
+      }
+      return (
+        <div className="w-full h-full overflow-auto p-2 text-xs">
+          <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b border-slate-200/40 opacity-70">
-                <th className="py-2 px-3 font-semibold">{widget.dimension || 'หมวดหมู่'}</th>
-                <th className="py-2 px-3 font-semibold text-right">{getAggLabel()}</th>
-                <th className="py-2 px-3 font-semibold text-right">จำนวนแถว</th>
+              <tr>
+                <th className="p-1 text-left opacity-60 text-[10px]">{dimY}\{dimX}</th>
+                {xSet.map((x) => (
+                  <th key={x} className="p-1 text-center font-semibold text-[10px] truncate max-w-[60px]">{x}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {chartData.map((row, idx) => (
-                <tr
-                  key={idx}
-                  onClick={() => handleItemClick(row.name)}
-                  className="border-b border-slate-200/20 hover:bg-violet-500/10 cursor-pointer transition"
-                >
-                  <td className="py-2 px-3 flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: row.color || currentPalette[idx % currentPalette.length] }}
-                    ></span>
-                    <span>{row.name}</span>
-                  </td>
-                  <td className="py-2 px-3 text-right font-medium">{formatVal(row.value)}</td>
-                  <td className="py-2 px-3 text-right opacity-60">{row.count}</td>
+              {ySet.map((y) => (
+                <tr key={y}>
+                  <td className="p-1 font-semibold text-[10px] truncate max-w-[80px]">{y}</td>
+                  {xSet.map((x) => {
+                    const val = matrix[y]?.[x] || 0;
+                    const intensity = Math.min(1, val / maxVal);
+                    return (
+                      <td
+                        key={x}
+                        className="p-1 text-center rounded transition"
+                        style={{
+                          backgroundColor: `${currentPalette[0] || '#8b5cf6'}${Math.round(intensity * 230 + 25).toString(16).padStart(2, '0')}`,
+                          color: intensity > 0.5 ? '#ffffff' : isDark ? '#e2e8f0' : '#1e293b',
+                        }}
+                        title={`${y} × ${x}: ${formatVal(val)}`}
+                      >
+                        <span className="text-[10px] font-medium">{val > 0 ? (val >= 1000 ? `${Math.round(val / 1000)}k` : val) : '-'}</span>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      );
+    }
+
+    // 14. AI Summary Insight Card
+    if (widget.type === 'ai_summary') {
+      const topDim = chartData[0];
+      const totalRev = chartData.reduce((acc, c) => acc + c.value, 0);
+      const avgRev = chartData.length > 0 ? Math.round(totalRev / chartData.length) : 0;
+      return (
+        <div className="w-full h-full flex flex-col justify-between p-3 text-xs">
+          <div className="flex items-center gap-2 text-violet-400 font-bold mb-2">
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            <span>บทวิเคราะห์ภาพรวมข้อมูล</span>
+          </div>
+          <div className="space-y-2 flex-1 overflow-auto">
+            {topDim && (
+              <div className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-between">
+                <span className="opacity-80">🏆 อันดับ 1 ({widget.dimension || 'หมวดหมู่'}):</span>
+                <span className="font-bold text-violet-300">{topDim.name} ({formatVal(topDim.value)})</span>
+              </div>
+            )}
+            <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+              <span className="opacity-80">📊 ยอดรวม ({getAggLabel()}):</span>
+              <span className="font-bold text-emerald-300">{formatVal(totalRev)}</span>
+            </div>
+            <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-between">
+              <span className="opacity-80">📈 ค่าเฉลี่ยต่อกลุ่ม:</span>
+              <span className="font-bold text-cyan-300">{formatVal(avgRev)}</span>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] opacity-60 text-right">
+            ประมวลผลจากข้อมูล {widgetRecords.length} แถวล่าสุด
+          </div>
+        </div>
+      );
+    }
+
+    // 15. Textbox / Richtext / Floating Text
+    if (widget.type === 'textbox' || widget.type === 'richtext' || widget.type === 'floating_text') {
+      return (
+        <div className="w-full h-full p-2 flex flex-col justify-center overflow-auto">
+          <div
+            style={{
+              color: widget.shapeTextColor || (isDark ? '#e2e8f0' : '#1e293b'),
+              fontSize: `${widget.shapeTextSize || 14}px`,
+            }}
+            className="font-medium whitespace-pre-wrap leading-relaxed select-text"
+          >
+            {widget.shapeText || widget.subtitle || widget.title || 'พิมพ์ข้อความของคุณที่นี่...'}
+          </div>
         </div>
       );
     }
@@ -829,7 +1158,11 @@ export const DynamicWidgetCard: React.FC<DynamicWidgetCardProps> = ({
       className={`group relative transition-all duration-150 select-none w-full h-full flex flex-col justify-between ${
         isPreviewMode ? 'cursor-default' : 'cursor-pointer'
       } ${
-        isShape ? 'p-0 overflow-visible' : 'p-4 overflow-hidden'
+        isShape || widget.type === 'image'
+          ? 'p-0 overflow-hidden'
+          : widget.type === 'table'
+          ? 'p-2 overflow-hidden'
+          : 'p-4 overflow-hidden'
       } ${
         isTransparent || isShape ? '' : 'shadow-2xs hover:shadow-md'
       } ${

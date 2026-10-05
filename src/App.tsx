@@ -565,6 +565,10 @@ export default function App() {
     const targetDash = params.get('dash');
 
     if (targetUser || targetDash) {
+      // If active user is previewing their own design in this tab, keep in-memory state so it matches 100%
+      if (currentTeamUser && (currentTeamUser.id === targetUser || !targetUser) && widgets.length > 0) {
+        return;
+      }
       loadDashboardByShareParams(targetUser, targetDash).then((sharedData) => {
         if (sharedData && sharedData.widgets && sharedData.widgets.length > 0) {
           applyDashboardData(sharedData);
@@ -949,6 +953,59 @@ export default function App() {
     setSelectedWidgetId(newId);
   };
 
+  const handleAddImage = () => {
+    const newId = `img-${Date.now()}`;
+    const newWidget: VisualWidget = {
+      id: newId,
+      title: 'โลโก้ / รูปภาพ',
+      type: 'image',
+      x: 24,
+      y: 24,
+      w: 4,
+      h: 3,
+      customWidth: 260,
+      customHeight: 140,
+      imageUrl: '',
+      imageFit: 'contain',
+      showTitle: false,
+    };
+    pushWidgetsState([...widgets, newWidget]);
+    setSelectedWidgetId(newId);
+    setInspectorOpen(true);
+  };
+
+  const handleAddTable = () => {
+    const newId = `table-${Date.now()}`;
+    const detectedKeys =
+      connectionConfig.detectedHeaders && connectionConfig.detectedHeaders.length > 0
+        ? connectionConfig.detectedHeaders
+        : ['date', 'region', 'category', 'product', 'revenue', 'profit'];
+    const newWidget: VisualWidget = {
+      id: newId,
+      title: 'ตารางข้อมูลสรุป',
+      type: 'table',
+      x: 24,
+      y: 120,
+      w: 10,
+      h: 6,
+      customWidth: 800,
+      customHeight: 380,
+      metric: 'revenue',
+      dimension: 'product',
+      tableColumns: detectedKeys.slice(0, 6),
+      tableMode: 'raw',
+      tablePageSize: 10,
+      tableSearch: true,
+      tableShowRowNumbers: true,
+      tableSortColumn: detectedKeys[0] || 'date',
+      tableSortDirection: 'desc',
+      showTitle: true,
+    };
+    pushWidgetsState([...widgets, newWidget]);
+    setSelectedWidgetId(newId);
+    setInspectorOpen(true);
+  };
+
   // Add customized Studio shapes (สี่เหลี่ยม, วงกลม, สามเหลี่ยม, ดาว, เพชร, แคปซูล)
   const handleAddShape = (shapeType: VisualType) => {
     const newId = `shape-${Date.now()}`;
@@ -1253,6 +1310,16 @@ export default function App() {
         isSyncing={isSyncing}
         sharedByUserName={sharedCreatorName || (currentTeamUser ? currentTeamUser.displayName : undefined)}
         sharedByUserId={currentTeamUser?.id}
+        onReturnToStudio={() => {
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('portal');
+            url.searchParams.delete('user');
+            url.searchParams.delete('dash');
+            window.history.pushState({}, '', url.pathname + (url.search ? '?' + url.searchParams.toString() : ''));
+          }
+          setViewMode('studio');
+        }}
       />
     );
   }
@@ -1462,6 +1529,8 @@ export default function App() {
           onOpenTheme={() => setIsThemeModalOpen(true)}
           onAddVisual={handleAddVisual}
           onAddFloatingText={handleAddFloatingText}
+          onAddImage={handleAddImage}
+          onAddTable={handleAddTable}
           onOpenDevConsole={handleOpenAdminPlatform}
           onOpenPublish={() => setIsPublishModalOpen(true)}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
