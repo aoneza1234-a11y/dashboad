@@ -10,6 +10,8 @@ export async function saveDashboardToServerFile(
   data: UserDashboardData
 ): Promise<{ success: boolean; fileName?: string; sizeBytes?: number; error?: string }> {
   try {
+    const timestamp = Date.now();
+    const isoTime = new Date().toISOString();
     const response = await fetch(`/api/user-dashboard?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       headers: {
@@ -18,7 +20,8 @@ export async function saveDashboardToServerFile(
       body: JSON.stringify({
         ...data,
         userId,
-        fileSavedAt: new Date().toISOString(),
+        fileSavedAt: isoTime,
+        savedAtTimestamp: timestamp,
       }),
     });
 
@@ -27,6 +30,21 @@ export async function saveDashboardToServerFile(
     }
 
     const res = await response.json();
+
+    // Broadcast update across all open tabs/browsers immediately
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const channel = new BroadcastChannel('bi_dashboard_cross_browser_sync');
+        channel.postMessage({
+          type: 'DASHBOARD_UPDATED',
+          userId,
+          fileSavedAt: isoTime,
+          savedAtTimestamp: timestamp,
+        });
+        channel.close();
+      } catch (bcErr) {}
+    }
+
     return {
       success: true,
       fileName: res.fileName,

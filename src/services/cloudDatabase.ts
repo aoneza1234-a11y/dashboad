@@ -421,6 +421,26 @@ export async function dbRegisterUser(
       } catch (e) {}
     }
 
+    // Provision immediately to Server File System so any other browser can load this user's dashboard instantly
+    try {
+      fetch(`/api/user-dashboard?userId=${encodeURIComponent(newUser.userId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dashboardId: starterDashboard.dashboardId,
+          userId: newUser.userId,
+          dashboardTitle: starterDashboard.dashboardName,
+          widgets: starterDashboard.dashboardConfig.widgets,
+          salesData: INITIAL_SALES_RECORDS,
+          themeConfig: starterDashboard.dashboardConfig.themeConfig,
+          spacingMode: 'ปกติ',
+          lastSavedAt: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+          fileSavedAt: new Date().toISOString(),
+          savedAtTimestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+
     return { success: true, user: newUser };
   } catch (error: any) {
     return { success: false, error: error?.message || 'เกิดข้อผิดพลาดในการลงทะเบียน' };
@@ -448,7 +468,7 @@ export async function dbLoginUser(
       }
     }
 
-    // 2. Try Server API
+    // 2. Try Server API (Checks email, userId, and username across central database)
     if (!found) {
       try {
         const serverRes = await fetch('/api/users?action=login', {
@@ -471,7 +491,11 @@ export async function dbLoginUser(
       if (!allUsers || allUsers.length === 0) {
         allUsers = DEFAULT_USERS;
       }
-      found = allUsers.find((u) => u.email.toLowerCase() === normalizedEmail) || null;
+      found = allUsers.find((u) => 
+        (u.email || '').toLowerCase() === normalizedEmail ||
+        (u.userId || '').toLowerCase() === normalizedEmail ||
+        (u.name || '').toLowerCase() === normalizedEmail
+      ) || null;
     }
 
     if (!found) {
@@ -670,7 +694,7 @@ export async function dbGetCurrentSessionUser(): Promise<DBUser | null> {
     }
     // Also check localStorage as instant bootstrap
     if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem('bi_studio_current_session_v1');
+      const raw = localStorage.getItem('bi_studio_current_session_v2');
       if (raw) {
         return JSON.parse(raw);
       }
@@ -686,11 +710,12 @@ export async function dbSetCurrentSessionUser(user: DBUser | null): Promise<void
     if (user) {
       await idbPut('session', { key: 'current_user', user });
       if (typeof window !== 'undefined') {
-        localStorage.setItem('bi_studio_current_session_v1', JSON.stringify(user));
+        localStorage.setItem('bi_studio_current_session_v2', JSON.stringify(user));
       }
     } else {
       await idbDelete('session', 'current_user');
       if (typeof window !== 'undefined') {
+        localStorage.removeItem('bi_studio_current_session_v2');
         localStorage.removeItem('bi_studio_current_session_v1');
       }
     }
@@ -716,79 +741,124 @@ export async function dbSaveDashboard(dashboard: DBDashboard): Promise<void> {
     updatedDate: new Date().toISOString(),
   };
 
-  // 1. Save to IndexedDB (Instant, robust, offline-ready)
-  await idbPut('dashboards', payload);
+  // 1. Save to Central Server API (/api/dashboards) - Single Source of Truth across all browsers & devices
+  try {
+    await fetch('/api/dashboards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (serverErr) {
+    console.warn('Server dashboards save notice:', serverErr);
+  }
 
   // 2. Save LEAN template to Cloud Firestore (zero bloat, instant save < 50ms)
-  // Store the widgets, card settings, theme, filter rules, and Google Sheet/data path.
-  // We do NOT bloat Firestore with thousands of raw sales rows!
   const leanCloudPayload: DBDashboard = {
     ...payload,
     dashboardConfig: {
       ...payload.dashboardConfig,
-      salesData: (payload.dashboardConfig?.salesData || []).slice(0, 5),
+      salesData: (payload.dashboardConfig?.salesData || []).slice(0, 10),
     },
   };
 
-  try {
-    const ref = doc(db, 'dashboards', payload.dashboardId);
-    withTimeout(setDoc(ref, sanitizeForFirestore(leanCloudPayload)), 1000).catch((err) => {
-      console.warn('Firestore dashboard non-blocking sync notice:', err);
-    });
-  } catch (err) {
-    console.warn('Firestore dashboard sync error (cached locally):', err);
+  if (isFirestoreAvailable && db) {
+    try {
+      const ref = doc(db, 'dashboards', payload.dashboardId);
+      withTimeout(setDoc(ref, sanitizeForFirestore(leanCloudPayload)), 1500).catch((err) => {
+        console.warn('Firestore dashboard non-blocking sync notice:', err);
+      });
+    } catch (err) {
+      console.warn('Firestore dashboard sync error:', err);
+    }
   }
 
-  // 3. Mark as latest project in session
+  // 3. Save to local IndexedDB as fast offline cache
+  await idbPut('dashboards', payload);
+
+  // 4. Mark as latest project in session
   await idbPut('session', { key: `latest_dashboard_${payload.userId}`, dashboardId: payload.dashboardId });
 }
 
 export async function dbGetDashboards(requestingUser: DBUser): Promise<DBDashboard[]> {
+  const byId = new Map<string, DBDashboard>();
+
+  // 1. Fetch from Central Server API (/api/dashboards) first - guarantees identical projects on all browsers
   try {
-    // 1. Check local IDB first for instant <5ms response
-    const localDashboards = await idbGetAll<DBDashboard>('dashboards');
-    const filteredLocal = requestingUser.role === 'admin'
-      ? localDashboards
-      : localDashboards.filter((d) => d.userId === requestingUser.userId);
-
-    if (filteredLocal.length > 0) {
-      // Background non-blocking sync with Firestore
-      try {
-        const q = requestingUser.role === 'admin'
-          ? query(collection(db, 'dashboards'))
-          : query(collection(db, 'dashboards'), where('userId', '==', requestingUser.userId));
-        withTimeout(getDocs(q), 1000)
-          .then((snap) => {
-            if (snap && !snap.empty) {
-              snap.forEach((d) => idbPut('dashboards', d.data() as DBDashboard));
-            }
-          })
-          .catch(() => {});
-      } catch (e) {}
-
-      return filteredLocal.sort((a, b) => new Date(b.updatedDate).getTime() - new Date(a.updatedDate).getTime());
+    const uParam = encodeURIComponent(requestingUser.userId);
+    const rParam = encodeURIComponent(requestingUser.role);
+    const res = await fetch(`/api/dashboards?userId=${uParam}&role=${rParam}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (res.ok) {
+      const serverList: DBDashboard[] = await res.json();
+      if (Array.isArray(serverList)) {
+        for (const item of serverList) {
+          byId.set(item.dashboardId, item);
+          idbPut('dashboards', item).catch(() => {});
+        }
+      }
     }
+  } catch (err) {
+    console.warn('Fetch server dashboards notice:', err);
+  }
 
-    // 2. If local is empty, try Firestore with a strict 1s timeout
-    let cloudDashboards: DBDashboard[] = [];
+  // 2. Fetch from Cloud Firestore if available
+  if (isFirestoreAvailable && db) {
     try {
       const q = requestingUser.role === 'admin'
         ? query(collection(db, 'dashboards'))
         : query(collection(db, 'dashboards'), where('userId', '==', requestingUser.userId));
-      const snap = await withTimeout(getDocs(q), 1000);
+      const snap = await withTimeout(getDocs(q), 1200);
       if (snap && !snap.empty) {
-        snap.forEach((d) => cloudDashboards.push(d.data() as DBDashboard));
-        for (const dash of cloudDashboards) {
-          await idbPut('dashboards', dash);
-        }
-        return cloudDashboards.sort((a, b) => new Date(b.updatedDate).getTime() - new Date(a.updatedDate).getTime());
+        snap.forEach((d) => {
+          const item = d.data() as DBDashboard;
+          if (item && item.dashboardId) {
+            byId.set(item.dashboardId, item);
+            idbPut('dashboards', item).catch(() => {});
+          }
+        });
       }
-    } catch {}
-
-    return [];
-  } catch (err) {
-    return [];
+    } catch (err) {
+      console.warn('Firestore getDocs notice:', err);
+    }
   }
+
+  // 3. Merge with local IDB cache
+  try {
+    const localDashboards = await idbGetAll<DBDashboard>('dashboards');
+    const filteredLocal = requestingUser.role === 'admin'
+      ? localDashboards
+      : localDashboards.filter((d) => d.userId === requestingUser.userId);
+    for (const item of filteredLocal) {
+      if (!byId.has(item.dashboardId)) {
+        byId.set(item.dashboardId, item);
+      }
+    }
+  } catch (e) {}
+
+  const merged = Array.from(byId.values());
+  return merged.sort((a, b) => new Date(b.updatedDate).getTime() - new Date(a.updatedDate).getTime());
+}
+
+export async function dbDeleteDashboard(dashboardId: string): Promise<void> {
+  // 1. Delete from Central Server API
+  try {
+    await fetch(`/api/dashboards?dashboardId=${encodeURIComponent(dashboardId)}`, {
+      method: 'DELETE',
+    });
+  } catch (e) {}
+
+  // 2. Delete from Cloud Firestore
+  if (isFirestoreAvailable && db) {
+    try {
+      await deleteDoc(doc(db, 'dashboards', dashboardId));
+    } catch (err) {
+      console.warn('Firestore delete error:', err);
+    }
+  }
+
+  // 3. Delete from local IDB
+  await idbDelete('dashboards', dashboardId);
 }
 
 export async function dbGetLatestDashboard(userId: string): Promise<DBDashboard | null> {
@@ -835,15 +905,6 @@ export async function dbGetLatestDashboard(userId: string): Promise<DBDashboard 
     return userDashboards[0] || null;
   } catch {
     return null;
-  }
-}
-
-export async function dbDeleteDashboard(dashboardId: string): Promise<void> {
-  await idbDelete('dashboards', dashboardId);
-  try {
-    await deleteDoc(doc(db, 'dashboards', dashboardId));
-  } catch (err) {
-    console.warn('Firestore delete error:', err);
   }
 }
 

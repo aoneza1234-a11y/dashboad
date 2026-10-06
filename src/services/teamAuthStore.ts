@@ -12,7 +12,17 @@ import {
   DEFAULT_USERS,
 } from './cloudDatabase';
 
-const SESSION_STORAGE_KEY = 'bi_studio_current_session_v1';
+const SESSION_STORAGE_KEY = 'bi_studio_current_session_v2';
+
+// Clean any legacy auto-admin session so all users start logged out at login screen
+if (typeof window !== 'undefined') {
+  try {
+    const legacy = localStorage.getItem('bi_studio_current_session_v1');
+    if (legacy) {
+      localStorage.removeItem('bi_studio_current_session_v1');
+    }
+  } catch (e) {}
+}
 
 export { DEFAULT_USERS } from './cloudDatabase';
 
@@ -39,49 +49,33 @@ export function getCurrentSessionUser(): TeamUser | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    // Explicit logged-out state
-    if (raw === 'LOGGED_OUT') {
+    // Explicit logged-out or unauthenticated state
+    if (!raw || raw === 'LOGGED_OUT' || raw === 'null') {
       return null;
     }
-    if (raw && raw !== 'null') {
-      const parsed = JSON.parse(raw);
-      if (parsed && (parsed.id || parsed.userId)) return parsed;
+    const parsed = JSON.parse(raw);
+    if (parsed && (parsed.id || parsed.userId)) {
+      return {
+        ...parsed,
+        id: parsed.id || parsed.userId,
+        displayName: parsed.displayName || parsed.name || parsed.email || 'สมาชิก',
+        name: parsed.name || parsed.displayName || parsed.email || 'สมาชิก',
+      };
     }
   } catch (err) {}
 
-  // If no session stored yet on this browser, connect to the primary system owner by default
-  // This guarantees both browsers immediately share the same central session and database
-  return DEFAULT_TEAM_USERS[0];
+  return null;
 }
 
 export const getCurrentUser = getCurrentSessionUser;
 
 export async function syncSessionFromServer(): Promise<TeamUser | null> {
-  let local = getCurrentSessionUser();
-
-  // 1. Check central server active session first across all browsers
-  try {
-    const sessionRes = await fetch('/api/session', { headers: { 'Cache-Control': 'no-cache' } });
-    if (sessionRes.ok) {
-      const sData = await sessionRes.json();
-      if (sData && sData.user && (sData.user.userId || sData.user.id)) {
-        const remoteUser = mapDBUserToTeamUser(sData.user);
-        try {
-          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(remoteUser));
-        } catch (e) {}
-        local = remoteUser;
-      }
-    }
-  } catch (e) {}
-
+  const local = getCurrentSessionUser();
   if (!local) {
-    local = DEFAULT_TEAM_USERS[0];
-    try {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(local));
-    } catch (e) {}
+    return null;
   }
 
-  // 2. Refresh latest role, name, and permissions from /api/users
+  // Refresh latest role, name, and permissions from /api/users
   try {
     const res = await fetch('/api/users', { headers: { 'Cache-Control': 'no-cache' } });
     if (res.ok) {

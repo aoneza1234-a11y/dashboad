@@ -495,6 +495,7 @@ export default function App() {
         return;
       }
 
+      isPopulatingUserDataRef.current = true;
       const targetUserId = user?.id || (user as any)?.userId;
       if (!targetUserId) {
         setTimeout(() => {
@@ -530,7 +531,7 @@ export default function App() {
         .finally(() => {
           setTimeout(() => {
             isPopulatingUserDataRef.current = false;
-          }, 300);
+          }, 400);
         });
 
       // 3. Live Real-Time Google Sheets refresh (ดึงข้อมูลแบบเรียลไทม์เมื่อเปิดหรือเมื่อชีทอัปเดต)
@@ -719,39 +720,56 @@ export default function App() {
     let lastRemoteSaveTime = '';
     const handleCentralSync = () => {
       if (!isMounted || isPopulatingUserDataRef.current || isSaving) return;
-      syncSessionFromServer().then((sessionUser) => {
-        if (!isMounted) return;
-        const u = sessionUser || currentTeamUser || getCurrentUser();
-        if (u && (!currentTeamUser || currentTeamUser.id !== u.id)) {
-          setCurrentTeamUser(u);
-        }
-        const targetUserId = u?.id || 'usr-admin-primary';
-        loadDashboardFromServerFile(targetUserId).then((serverDash) => {
-          if (!isMounted || isPopulatingUserDataRef.current || isSaving) return;
-          if (serverDash && serverDash.widgets && serverDash.widgets.length > 0) {
-            const remoteSaveTime = serverDash.lastSavedAt || (serverDash as any).fileSavedAt || '';
-            const isLocalEmpty = !widgets || widgets.length === 0;
-            const hasRemoteUpdates = remoteSaveTime && remoteSaveTime !== lastSavedTime && remoteSaveTime !== lastRemoteSaveTime;
-            const isLayoutDifferent = JSON.stringify(serverDash.widgets) !== JSON.stringify(widgets);
+      const u = currentTeamUser || getCurrentUser();
+      // If not logged in, do not sync or load admin dashboard
+      if (!u?.id) return;
 
-            if (isLocalEmpty || (hasRemoteUpdates && isLayoutDifferent)) {
-              lastRemoteSaveTime = remoteSaveTime;
-              applyDashboardData(serverDash);
-            }
+      loadDashboardFromServerFile(u.id).then((serverDash) => {
+        if (!isMounted || isPopulatingUserDataRef.current || isSaving) return;
+        if (serverDash && serverDash.widgets && serverDash.widgets.length > 0) {
+          const remoteSaveTime = (serverDash as any).savedAtTimestamp || serverDash.lastSavedAt || (serverDash as any).fileSavedAt || '';
+          const isLocalEmpty = !widgets || widgets.length === 0;
+          const hasRemoteUpdates = remoteSaveTime && remoteSaveTime !== lastSavedTime && remoteSaveTime !== lastRemoteSaveTime;
+          const isLayoutDifferent = JSON.stringify(serverDash.widgets) !== JSON.stringify(widgets);
+          const isTitleDifferent = serverDash.dashboardTitle && serverDash.dashboardTitle !== dashboardTitle;
+          const isThemeDifferent = serverDash.themeConfig && JSON.stringify(serverDash.themeConfig) !== JSON.stringify(themeConfig);
+
+          if (isLocalEmpty || (hasRemoteUpdates && (isLayoutDifferent || isTitleDifferent || isThemeDifferent))) {
+            lastRemoteSaveTime = remoteSaveTime;
+            applyDashboardData(serverDash);
           }
-        }).catch(() => {});
+        }
       }).catch(() => {});
     };
+
+    // Instant cross-tab & cross-browser broadcast listener
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('bi_dashboard_cross_browser_sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'DASHBOARD_UPDATED') {
+            const u = currentTeamUser || getCurrentUser();
+            if (u?.id && event.data.userId === u.id) {
+              handleCentralSync();
+            }
+          }
+        };
+      } catch (bcErr) {}
+    }
 
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', handleCentralSync);
       document.addEventListener('visibilitychange', handleCentralSync);
     }
-    const syncInterval = setInterval(handleCentralSync, 2500);
+    const syncInterval = setInterval(handleCentralSync, 2000);
 
     return () => {
       isMounted = false;
       clearInterval(syncInterval);
+      if (bc) {
+        try { bc.close(); } catch (e) {}
+      }
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', handleCentralSync);
         document.removeEventListener('visibilitychange', handleCentralSync);
@@ -1363,6 +1381,7 @@ export default function App() {
     return (
       <WelcomeLandingPortal
         onLoginSuccess={(user) => {
+          isPopulatingUserDataRef.current = true;
           setCurrentTeamUser(user);
           applyUserDashboard(user);
         }}

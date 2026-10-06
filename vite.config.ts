@@ -46,36 +46,116 @@ function dashboardFileStoragePlugin(): Plugin {
               return;
             }
 
-            // Fallback to central system dashboard so any browser or user opening gets the central work
+            // Fallback to central template if available
             const centralPath = path.join(storageDir, 'dashboard_central.json');
+            let baseWidgets: any[] = [];
+            let baseSalesData: any[] = [];
+            let baseTheme: any = {
+              preset: 'violet',
+              primaryColor: '#7c3aed',
+              fontFamily: 'Prompt',
+              borderRadius: 'rounded-lg',
+              shadowStyle: 'shadow-sm',
+              density: 'comfortable',
+            };
+
             if (fs.existsSync(centralPath)) {
-              const content = fs.readFileSync(centralPath, 'utf-8');
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              if (isDownload) {
-                res.setHeader('Content-Disposition', `attachment; filename="dashboard_${safeId}.json"`);
-              }
-              res.end(content);
-              return;
+              try {
+                const centralParsed = JSON.parse(fs.readFileSync(centralPath, 'utf-8'));
+                if (Array.isArray(centralParsed.widgets) && centralParsed.widgets.length > 0) {
+                  baseWidgets = centralParsed.widgets;
+                  baseSalesData = centralParsed.salesData || [];
+                  if (centralParsed.themeConfig) baseTheme = centralParsed.themeConfig;
+                }
+              } catch (e) {}
             }
 
-            // Try any dashboard file in storage
-            const files = fs.readdirSync(storageDir).filter((f) => f.startsWith('dashboard_') && f.endsWith('.json'));
-            if (files.length > 0) {
-              const content = fs.readFileSync(path.join(storageDir, files[0]), 'utf-8');
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(content);
-              return;
+            if (baseWidgets.length === 0) {
+              baseWidgets = [
+                {
+                  id: 'kpi-profit',
+                  title: 'กำไรขั้นต้น',
+                  type: 'kpi',
+                  x: 0,
+                  y: 0,
+                  w: 3,
+                  h: 2,
+                  metric: 'profit',
+                  prefix: '# ',
+                  subtitle: 'กำไร',
+                },
+                {
+                  id: 'mini-bar',
+                  title: 'แนวโน้มยอดขาย',
+                  type: 'column',
+                  x: 3,
+                  y: 0,
+                  w: 9,
+                  h: 2,
+                  dimension: 'date',
+                  metric: 'revenue',
+                  aggregation: 'sum',
+                  color: '#6366f1',
+                },
+                {
+                  id: 'chart-category',
+                  title: 'ยอดขายแยกตามหมวดหมู่',
+                  type: 'bar',
+                  x: 0,
+                  y: 2,
+                  w: 6,
+                  h: 4,
+                  dimension: 'category',
+                  metric: 'revenue',
+                  aggregation: 'sum',
+                  color: '#7c3aed',
+                  showDataLabels: true,
+                  showLegend: true,
+                },
+                {
+                  id: 'chart-region',
+                  title: 'สัดส่วนยอดขายตามภูมิภาค',
+                  type: 'donut',
+                  x: 6,
+                  y: 2,
+                  w: 6,
+                  h: 4,
+                  dimension: 'region',
+                  metric: 'revenue',
+                  aggregation: 'sum',
+                  color: '#ec4899',
+                  showDataLabels: true,
+                  showLegend: true,
+                },
+              ];
             }
 
-            res.statusCode = 404;
+            // Auto-provision initial dashboard file for this user so all devices & browsers have a synced record!
+            const now = new Date();
+            const initialUserDashboard = {
+              dashboardId: `dash-${safeId}-main`,
+              userId: userId,
+              dashboardTitle: `ภาพรวมยอดขาย (${userId})`,
+              widgets: baseWidgets,
+              salesData: baseSalesData,
+              themeConfig: baseTheme,
+              spacingMode: 'ปกติ',
+              savedAtTimestamp: Date.now(),
+              fileSavedAt: now.toISOString(),
+              lastSavedAt: now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            };
+
+            try {
+              fs.writeFileSync(filePath, JSON.stringify(initialUserDashboard, null, 2), 'utf-8');
+            } catch (wErr) {}
+
+            res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ success: false, error: 'Dashboard file not found' }));
+            res.end(JSON.stringify(initialUserDashboard));
             return;
           }
 
-          // POST /api/user-dashboard
+          // POST /api/user-dashboard (Saves strictly under the user's isolated account file)
           if (req.method === 'POST') {
             let body = '';
             req.on('data', (chunk: any) => {
@@ -88,10 +168,19 @@ function dashboardFileStoragePlugin(): Plugin {
                 const safeId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_');
                 const filePath = path.join(storageDir, `dashboard_${safeId}.json`);
 
+                const timestamp = Date.now();
+                const nowIso = new Date().toISOString();
+                parsed.savedAtTimestamp = timestamp;
+                parsed.fileSavedAt = nowIso;
+                parsed.userId = userId;
+
                 fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
-                // Central system synchronization: always maintain central authoritative copy
-                fs.writeFileSync(path.join(storageDir, 'dashboard_central.json'), JSON.stringify(parsed, null, 2), 'utf-8');
-                fs.writeFileSync(path.join(storageDir, 'dashboard_default_user.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+
+                // If primary admin or central user, also update central fallback
+                if (userId === 'usr-admin-primary' || userId === 'default_user') {
+                  fs.writeFileSync(path.join(storageDir, 'dashboard_central.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+                  fs.writeFileSync(path.join(storageDir, 'dashboard_default_user.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+                }
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -100,8 +189,9 @@ function dashboardFileStoragePlugin(): Plugin {
                     success: true,
                     fileName: `dashboard_${safeId}.json`,
                     filePath,
-                    sizeBytes: Buffer.byteLength(body, 'utf-8'),
-                    savedAt: new Date().toISOString(),
+                    savedAtTimestamp: timestamp,
+                    sizeBytes: Buffer.byteLength(JSON.stringify(parsed), 'utf-8'),
+                    savedAt: nowIso,
                   })
                 );
               } catch (parseErr: any) {
@@ -431,18 +521,8 @@ function dashboardFileStoragePlugin(): Plugin {
           }
 
           const defaultSession = {
-            currentUserId: 'usr-admin-primary',
-            user: {
-              userId: 'usr-admin-primary',
-              id: 'usr-admin-primary',
-              email: 'aoneza1234@gmail.com',
-              name: 'Thirawat (เจ้าของระบบ)',
-              displayName: 'Thirawat (เจ้าของระบบ)',
-              role: 'admin',
-              department: 'ผู้ดูแลระบบและวิเคราะห์ข้อมูล',
-              createdDate: '2026-01-01T00:00:00.000Z',
-              lastLoginAt: 'เพิ่งเข้าสู่ระบบ',
-            },
+            currentUserId: null,
+            user: null,
           };
 
           if (req.method === 'GET') {
@@ -471,7 +551,15 @@ function dashboardFileStoragePlugin(): Plugin {
               try {
                 const parsed = JSON.parse(body);
                 const u = parsed.user || parsed;
-                const userId = u.userId || u.id || parsed.currentUserId || 'usr-admin-primary';
+                const userId = u?.userId || u?.id || parsed?.currentUserId || null;
+                if (!userId) {
+                  const emptySession = { currentUserId: null, user: null, updatedAt: new Date().toISOString() };
+                  fs.writeFileSync(sessionFile, JSON.stringify(emptySession, null, 2), 'utf-8');
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  res.end(JSON.stringify({ success: true, ...emptySession }));
+                  return;
+                }
                 const sessionPayload = {
                   currentUserId: userId,
                   user: {
@@ -860,6 +948,131 @@ function dashboardFileStoragePlugin(): Plugin {
                 res.end(JSON.stringify({ success: false, error: parseErr.message }));
               }
             });
+            return;
+          }
+
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        } catch (serverErr: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ success: false, error: serverErr.message }));
+        }
+      });
+
+      // API: Dashboards & Projects Hub (Multi-Browser & Cross-Device Central Storage)
+      server.middlewares.use('/api/dashboards', async (req, res) => {
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
+        const storageDir = path.resolve(process.cwd(), 'data/storage');
+        const dashDir = path.join(storageDir, 'dashboards');
+        const projectsFile = path.join(storageDir, 'saved_projects.json');
+
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+
+        try {
+          if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+          if (!fs.existsSync(dashDir)) fs.mkdirSync(dashDir, { recursive: true });
+
+          let allProjects: any[] = [];
+          if (fs.existsSync(projectsFile)) {
+            try {
+              allProjects = JSON.parse(fs.readFileSync(projectsFile, 'utf-8'));
+            } catch {
+              allProjects = [];
+            }
+          }
+
+          // GET /api/dashboards?userId=...&role=...
+          if (req.method === 'GET') {
+            const userId = url.searchParams.get('userId') || url.searchParams.get('user') || '';
+            const role = url.searchParams.get('role') || 'editor';
+
+            let filtered = allProjects;
+            if (userId && role !== 'admin') {
+              filtered = allProjects.filter((p: any) => p.userId === userId);
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(filtered));
+            return;
+          }
+
+          // POST /api/dashboards (Save or Update Project)
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk: any) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body || '{}');
+                const dId = parsed.dashboardId || parsed.id || `dash-${Date.now()}`;
+                const uId = parsed.userId || 'usr-default';
+                const timeNow = new Date().toISOString();
+
+                const projectItem = {
+                  ...parsed,
+                  dashboardId: dId,
+                  userId: uId,
+                  dashboardName: parsed.dashboardName || parsed.dashboardTitle || 'แดชบอร์ดของฉัน',
+                  createdDate: parsed.createdDate || timeNow,
+                  updatedDate: timeNow,
+                };
+
+                const existingIdx = allProjects.findIndex((p: any) => p.dashboardId === dId);
+                if (existingIdx >= 0) {
+                  allProjects[existingIdx] = { ...allProjects[existingIdx], ...projectItem };
+                } else {
+                  allProjects.unshift(projectItem);
+                }
+
+                fs.writeFileSync(projectsFile, JSON.stringify(allProjects, null, 2), 'utf-8');
+
+                // Also persist individual file
+                const safeDash = String(dId).replace(/[^a-zA-Z0-9_-]/g, '_');
+                fs.writeFileSync(path.join(dashDir, `dashboard_${safeDash}.json`), JSON.stringify(projectItem, null, 2), 'utf-8');
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: true, dashboard: projectItem, count: allProjects.length }));
+              } catch (parseErr: any) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ success: false, error: parseErr.message }));
+              }
+            });
+            return;
+          }
+
+          // DELETE /api/dashboards?dashboardId=...
+          if (req.method === 'DELETE') {
+            const dId = url.searchParams.get('dashboardId') || url.searchParams.get('id') || '';
+            if (!dId) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ success: false, error: 'Missing dashboardId' }));
+              return;
+            }
+
+            allProjects = allProjects.filter((p: any) => p.dashboardId !== dId);
+            fs.writeFileSync(projectsFile, JSON.stringify(allProjects, null, 2), 'utf-8');
+
+            const safeDash = String(dId).replace(/[^a-zA-Z0-9_-]/g, '_');
+            const dashFilePath = path.join(dashDir, `dashboard_${safeDash}.json`);
+            if (fs.existsSync(dashFilePath)) {
+              try { fs.unlinkSync(dashFilePath); } catch {}
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ success: true, deletedId: dId, count: allProjects.length }));
             return;
           }
 

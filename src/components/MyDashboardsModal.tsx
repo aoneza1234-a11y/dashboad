@@ -84,15 +84,15 @@ export const MyDashboardsModal: React.FC<MyDashboardsModalProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   const loadProjects = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !currentUser.id) return;
     setIsLoading(true);
     try {
       const dbUser: DBUser = {
         userId: currentUser.id,
-        email: currentUser.email,
-        name: currentUser.displayName,
-        role: currentUser.role,
-        createdDate: currentUser.createdAt,
+        email: currentUser.email || '',
+        name: currentUser.displayName || currentUser.name || currentUser.email || 'สมาชิก',
+        role: currentUser.role || 'editor',
+        createdDate: currentUser.createdAt || new Date().toISOString(),
       };
       const list = await dbGetDashboards(dbUser);
       setCloudDashboards(list);
@@ -228,7 +228,9 @@ export const MyDashboardsModal: React.FC<MyDashboardsModalProps> = ({
               <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                 <span>แดชบอร์ดของฉัน (My Projects)</span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                  {currentUser?.role === 'admin' ? '🛡️ Admin (เห็นของทุกผู้ใช้)' : `👤 ผู้ใช้: ${currentUser?.displayName}`}
+                  {currentUser?.role === 'admin'
+                    ? '🛡️ Admin (เห็นของทุกผู้ใช้)'
+                    : `👤 ผู้ใช้: ${currentUser?.displayName || currentUser?.name || currentUser?.email || 'สมาชิก'}`}
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
